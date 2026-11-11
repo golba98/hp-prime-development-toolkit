@@ -115,7 +115,9 @@ The manual workflow follows these gates:
 
 1. **Validate:** resolve the requested commit; check the stable Cargo workspace
    version, launcher and exactly five dependency versions; enforce matching tags.
-   Publication is dispatched from the selected version tag, which must be on `main`; the workflow SHA must match it so npm provenance names the exact artifact source.
+   Publication is dispatched from the selected version tag, which must be on
+   `main`. The workflow SHA must match it so npm provenance names the exact
+   artifact source.
 2. **Check and prepare:** all CI gates must pass. Validate the complete artifact
    set and collect one source-bound bundle.
 3. **Publish npm:** after protected environment approval, check all six registry
@@ -176,6 +178,10 @@ Linux x64 supplies the retained copy. LF checkout rules make that comparison
 portable. Extra files, missing platforms, duplicate archive members, links,
 conflicting launchers, wrong identities or mismatched native/npm binaries fail.
 Reused bundles are fully revalidated against the selected commit.
+For publication reuse, the source run must also have executed the reviewed
+release workflow at that exact commit with the version tag as its input.
+Dispatch tagged bundle dry runs from the tag itself; an arbitrary branch run
+cannot qualify by putting a trusted commit into its manifest.
 
 ## Maintainer setup before first publication
 
@@ -242,7 +248,8 @@ release finalization.
    within **two days**. An exact-version skip during bootstrap finalization does
    not validate that configuration. Configure or recreate it just before the next
    new version if necessary; expiry is not evidence of a failed v0.1.0 bootstrap.
-7. Obtain approval to finalize the public GitHub release. Dispatch the workflow from tag `v0.1.0`
+7. Obtain approval to finalize the public GitHub release. Dispatch the workflow
+   from tag `v0.1.0`
    with `ref=v0.1.0`, `publish=true`, and `bundle_run_id=REVIEWED_RUN_ID`.
    Approve the environment gates. Existing exact npm uploads are verified and
    skipped; registry, draft archive and public download tests still run.

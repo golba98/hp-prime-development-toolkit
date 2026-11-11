@@ -227,6 +227,19 @@ async function githubApi(endpoint) {
   ensure(response.ok, `GitHub API lookup failed: ${response.status}`);
   return response.json();
 }
+export function validateSourceRun(record, commit, tag) {
+  ensure(record?.name === 'Manual release' && record.path === '.github/workflows/release.yml'
+    && record.event === 'workflow_dispatch' && record.conclusion === 'success'
+    && record.head_sha === commit && record.head_repository?.full_name === githubRepository
+    && [`Release ${tag} (dry run)`, `Release ${tag} (publish)`].includes(record.display_title),
+  'Bundle must come from a successful tag-dispatched run of the selected source workflow');
+}
+async function verifySourceRun() {
+  const id = process.env.BUNDLE_RUN_ID;
+  ensure(/^[0-9]+$/.test(id), 'Invalid bundle workflow run ID');
+  const record = await githubApi(`actions/runs/${id}`);
+  validateSourceRun(record, process.env.RELEASE_SHA, process.env.RELEASE_TAG);
+}
 async function assetBytes(asset) {
   const response = await fetch(asset.url, { headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/octet-stream' }, signal: AbortSignal.timeout(60000) });
   ensure(response.ok, `Cannot download release asset: ${asset.name}`);
@@ -282,6 +295,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (command === 'ref') await validateRef();
   else if (command === 'prepare') await prepare(path.resolve(source), path.resolve(output));
   else if (command === 'verify') await validateBundle(path.resolve(source));
+  else if (command === 'verify-run') await verifySourceRun();
   else if (command === 'publish') await publish(path.resolve(source));
   else if (command === 'stage') await githubRelease(path.resolve(source));
   else if (command === 'complete') await githubRelease(path.resolve(source), true);

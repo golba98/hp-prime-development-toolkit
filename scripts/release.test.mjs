@@ -300,3 +300,17 @@ test('downloaded GitHub checksums and wrong runners fail explicitly', async t =>
   } }), /Downloaded checksum file differs/);
   assert.equal(manifest.native.length, 5);
 });
+
+test('reused bundles require the exact tag workflow identity, not self-reported metadata', async () => {
+  const { validateSourceRun } = await import('./release.mjs');
+  const commit = 'a'.repeat(40), tag = 'v0.1.0';
+  const record = { name: 'Manual release', path: '.github/workflows/release.yml', event: 'workflow_dispatch',
+    conclusion: 'success', head_sha: commit, head_repository: { full_name: 'golba98/hp-prime-development-toolkit' },
+    display_title: 'Release v0.1.0 (dry run)' };
+  validateSourceRun(record, commit, tag);
+  for (const changed of [
+    { head_sha: 'b'.repeat(40) }, { path: '.github/workflows/unreviewed.yml' },
+    { display_title: 'Release unreviewed-branch (dry run)' }, { conclusion: 'failure' },
+    { head_repository: { full_name: 'someone/fork' } },
+  ]) assert.throws(() => validateSourceRun({ ...record, ...changed }, commit, tag), /tag-dispatched run/);
+});

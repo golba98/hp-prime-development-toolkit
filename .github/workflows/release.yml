@@ -80,9 +80,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BUNDLE_RUN_ID: ${{ inputs.bundle_run_id }}
-        run: |
-          [[ "$BUNDLE_RUN_ID" =~ ^[0-9]+$ ]] || exit 1
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUNDLE_RUN_ID" --jq 'select(.name == "Manual release" and .event == "workflow_dispatch" and .conclusion == "success") | .id' | grep -qx "$BUNDLE_RUN_ID"
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+        run: node scripts/release.mjs verify-run
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: inputs.bundle_run_id != ''
         with:
