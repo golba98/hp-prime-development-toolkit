@@ -1,0 +1,287 @@
+name: Manual release
+run-name: "Release ${{ inputs.ref }} (${{ inputs.publish && 'publish' || 'dry run' }})"
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch/commit for dry run; existing vMAJOR.MINOR.PATCH tag for publication
+        type: string
+        default: main
+        required: true
+      publish:
+        description: Authorize public npm/GitHub publication (requires protected environment approval)
+        type: boolean
+        default: false
+      bundle_run_id:
+        description: Earlier successful Manual release run ID whose exact bundle should be reused
+        type: string
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: manual-release
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.ref.outputs.sha }}
+      version: ${{ steps.ref.outputs.version }}
+      tag: ${{ steps.ref.outputs.tag }}
+      matrix: ${{ steps.ref.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - id: ref
+        name: Validate exact tag, workspace and all six package versions
+        env:
+          RELEASE_REF: ${{ inputs.ref }}
+          RELEASE_PUBLISH: ${{ inputs.publish }}
+        run: node scripts/release.mjs ref
+  checks:
+    needs: validate
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.validate.outputs.sha }}
+  prepare:
+    needs: [validate, checks]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: inputs.bundle_run_id == ''
+        with:
+          pattern: hpdev-*
+          path: artifacts
+      - name: Validate all packages, native archives and checksums
+        if: inputs.bundle_run_id == ''
+        env:
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: node scripts/release.mjs prepare artifacts release
+      - name: Validate source workflow run before reusing artifacts
+        if: inputs.bundle_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE_RUN_ID: ${{ inputs.bundle_run_id }}
+        run: |
+          [[ "$BUNDLE_RUN_ID" =~ ^[0-9]+$ ]] || exit 1
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUNDLE_RUN_ID" --jq 'select(.name == "Manual release" and .event == "workflow_dispatch" and .conclusion == "success") | .id' | grep -qx "$BUNDLE_RUN_ID"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: inputs.bundle_run_id != ''
+        with:
+          name: release-bundle
+          path: release
+          run-id: ${{ inputs.bundle_run_id }}
+          github-token: ${{ github.token }}
+      - name: Revalidate reused bundle and selected source commit
+        if: inputs.bundle_run_id != ''
+        env:
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+        run: node scripts/release.mjs verify release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-bundle
+          path: release/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Summarize exact prepared bundle
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          echo "Prepared $VERSION: six npm tarballs, five standalone archives, SHA-256 checksums and source-bound manifest." >> "$GITHUB_STEP_SUMMARY"
+          echo "Publication requested: $PUBLISH. Preserve this release-bundle for all retries; do not rebuild a partially published version." >> "$GITHUB_STEP_SUMMARY"
+  publish:
+    if: inputs.publish
+    needs: [validate, prepare]
+    runs-on: ubuntu-24.04
+    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: npm install --global npm@11.21.0 --ignore-scripts
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-bundle
+          path: release
+      - name: Publish five platforms before the launcher using OIDC
+        env:
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+          RELEASE_PUBLISH: 'true'
+        run: node scripts/release.mjs publish release
+  smoke:
+    needs: [validate, publish]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.validate.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-bundle
+          path: release
+      - name: Install from the actual public npm registry
+        env:
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+          RELEASE_TARGET: ${{ matrix.target }}
+        run: node scripts/release.mjs smoke release
+      - name: Report platform result
+        if: always()
+        env:
+          TARGET: ${{ matrix.target }}
+          RESULT: ${{ job.status }}
+        run: node -e "require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, 'npm '+process.env.TARGET+' - '+process.env.RESULT+'\n')"
+  github-stage:
+    needs: [validate, smoke]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-bundle
+          path: release
+      - name: Upload exact native downloads to a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+          RELEASE_PUBLISH: 'true'
+        run: node scripts/release.mjs stage release
+  archive-smoke:
+    needs: [validate, github-stage]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.validate.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-bundle
+          path: release
+      - name: Download and execute the draft GitHub archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+          RELEASE_TARGET: ${{ matrix.target }}
+        run: node scripts/release.mjs native-smoke release
+      - name: Report platform result
+        if: always()
+        env:
+          TARGET: ${{ matrix.target }}
+          RESULT: ${{ job.status }}
+        run: node -e "require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, 'draft archive '+process.env.TARGET+' - '+process.env.RESULT+'\n')"
+  github-release:
+    needs: [validate, archive-smoke]
+    runs-on: ubuntu-24.04
+    environment: npm-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-bundle
+          path: release
+      - name: Make the fully verified draft public
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+          RELEASE_PUBLISH: 'true'
+        run: node scripts/release.mjs complete release
+  public-verification:
+    needs: [validate, github-release]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.validate.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-bundle
+          path: release
+      - name: Verify public npm and unauthenticated GitHub downloads
+        env:
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+          RELEASE_TARGET: ${{ matrix.target }}
+          RELEASE_PUBLIC: 'true'
+        run: node scripts/release.mjs smoke release
+      - name: Verify unauthenticated public GitHub archive installation
+        env:
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+          RELEASE_TARGET: ${{ matrix.target }}
+          RELEASE_PUBLIC: 'true'
+        run: node scripts/release.mjs native-smoke release
+      - name: Report platform result
+        if: always()
+        env:
+          TARGET: ${{ matrix.target }}
+          RESULT: ${{ job.status }}
+        run: node -e "require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, 'public npm/archive '+process.env.TARGET+' - '+process.env.RESULT+'\n')"

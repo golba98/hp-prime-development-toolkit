@@ -21,6 +21,7 @@ try{
  const launcher=path.join(modules,'hp-prime-devkit/bin/hpdev.cjs');
  const run=args=>{const result=spawnSync(process.execPath,[launcher,...args],{cwd:directory,encoding:'utf8',env:{...process.env,PATH:path.dirname(process.execPath),PPL_ENGINE:'firmware'}});if(result.status!==0)throw new Error(`Installed launcher failed (${result.status}): ${result.stderr}`);return result.stdout;};
  if(run(['--version']).trim()!==`hpdev ${packed.version}`)throw new Error('incorrect installed version');
+ if(!run(['--help']).includes('Usage:'))throw new Error('installed help failed');
  const shim=process.platform==='win32'?path.join(prefix,'hpdev.cmd'):path.join(prefix,'bin/hpdev');
  const shimVersion=execFileSync(shim,['--version'],{cwd:directory,encoding:'utf8',shell:process.platform==='win32',env:{...process.env,PATH:path.dirname(process.execPath)}}).trim();
  if(shimVersion!==`hpdev ${packed.version}`)throw new Error('installed hpdev command shim failed');
@@ -30,5 +31,5 @@ try{
  const corrupt=await fs.readFile(native);corrupt[0]^=1;await fs.writeFile(native,corrupt);
  const rejected=spawnSync(process.execPath,[launcher,'--version','--json'],{cwd:directory,encoding:'utf8'});
  if(rejected.status!==70||JSON.parse(rejected.stdout).status!=='infrastructure_error'||!JSON.parse(rejected.stdout).error.includes('checksum mismatch'))throw new Error('corrupt executable was not rejected');
- console.log(JSON.stringify({passed:4,failed:0,platform:`${process.platform}-${process.arch}`,version:result.version,offline:true,outsideCheckout:true}));
+ console.log(JSON.stringify({passed:5,failed:0,platform:`${process.platform}-${process.arch}`,version:result.version,offline:true,outsideCheckout:true}));
 }finally{await fs.rm(directory,{recursive:true,force:true});}

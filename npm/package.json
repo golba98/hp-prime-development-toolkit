@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Standalone native Rust HP Prime PPL developer toolkit",
   "license": "MIT",
-  "repository": "github:golba98/hp-prime-development-toolkit",
+  "repository": { "type": "git", "url": "git+https://github.com/golba98/hp-prime-development-toolkit.git" },
   "engines": { "node": ">=18" },
   "bin": { "hpdev": "bin/hpdev.cjs" },
   "files": ["bin", "examples", "docs", "hpdev.toml", "tests/fixtures", "tests/snapshots", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"],

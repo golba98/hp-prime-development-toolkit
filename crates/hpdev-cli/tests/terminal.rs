@@ -5,12 +5,20 @@ use serde_json::Value;
 use std::{
     io::{Read, Write},
     path::PathBuf,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 fn session(args: &[&str], keys: Option<&[&[u8]]>) -> (u32, Value, String) {
+    session_with_prompts(args, keys, &[])
+}
+fn session_with_prompts(
+    args: &[&str],
+    keys: Option<&[&[u8]]>,
+    prompts: &[&str],
+) -> (u32, Value, String) {
     let dir = tempfile::tempdir().unwrap();
     let report = dir.path().join("report.json");
     let pair = native_pty_system()
@@ -30,18 +38,49 @@ fn session(args: &[&str], keys: Option<&[&[u8]]>) -> (u32, Value, String) {
     let mut child = pair.slave.spawn_command(command).unwrap();
     drop(pair.slave);
     let mut reader = pair.master.try_clone_reader().unwrap();
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let reader_output = Arc::clone(&captured);
     let output = std::thread::spawn(move || {
-        let mut bytes = vec![];
-        let _ = reader.read_to_end(&mut bytes);
-        String::from_utf8_lossy(&bytes).into_owned()
+        let mut chunk = [0; 4096];
+        loop {
+            match reader.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(count) => reader_output
+                    .lock()
+                    .unwrap()
+                    .extend_from_slice(&chunk[..count]),
+            }
+        }
     });
     let mut writer = pair.master.take_writer().unwrap();
     if let Some(keys) = keys {
-        std::thread::sleep(Duration::from_millis(250));
-        for chunk in keys {
+        assert!(prompts.is_empty() || prompts.len() == keys.len());
+        if prompts.is_empty() {
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        for (index, chunk) in keys.iter().enumerate() {
+            if let Some(prompt) = prompts.get(index) {
+                let deadline = Instant::now() + Duration::from_secs(8);
+                loop {
+                    let terminal = String::from_utf8_lossy(&captured.lock().unwrap()).into_owned();
+                    if terminal.contains(prompt) {
+                        break;
+                    }
+                    if Instant::now() > deadline || child.try_wait().unwrap().is_some() {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        panic!(
+                            "PTY never displayed {prompt:?}: {args:?}; terminal output: {terminal}"
+                        );
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
             writer.write_all(chunk).unwrap();
             writer.flush().unwrap();
-            std::thread::sleep(Duration::from_millis(200));
+            if prompts.is_empty() {
+                std::thread::sleep(Duration::from_millis(200));
+            }
         }
     }
     let deadline = Instant::now() + Duration::from_secs(8);
@@ -52,13 +91,17 @@ fn session(args: &[&str], keys: Option<&[&[u8]]>) -> (u32, Value, String) {
         if Instant::now() > deadline {
             let _ = child.kill();
             let _ = child.wait();
-            panic!("PTY command did not terminate: {args:?}");
+            panic!(
+                "PTY command did not terminate: {args:?}; terminal output: {}",
+                String::from_utf8_lossy(&captured.lock().unwrap())
+            );
         }
         std::thread::sleep(Duration::from_millis(20));
     };
     drop(writer);
     drop(pair.master);
-    let output = output.join().unwrap();
+    output.join().unwrap();
+    let output = String::from_utf8_lossy(&captured.lock().unwrap()).into_owned();
     let json = std::fs::read(&report)
         .unwrap_or_else(|e| panic!("no report: {e}; terminal output: {output}"));
     (
@@ -135,9 +178,12 @@ fn terminal_debugger_runs_real_steps() {
 }
 #[test]
 fn terminal_dialog_response_is_written_back() {
-    let (code, r, _) = session(
+    let (code, r, _) = session_with_prompts(
         &["preview", "examples/INPUT.ppl", "--tui", "--exit-on-finish"],
         Some(&[b"7\r", b"\x1b[B\r", b"\r"]),
+        // Single words remain contiguous even when ratatui emits cursor moves
+        // between words. Each belongs to a different rendered dialog.
+        &["Number", "Three", "message"],
     );
     assert_eq!(code, 0, "{r}");
     assert_eq!(r["return_value"]["value"], "9");

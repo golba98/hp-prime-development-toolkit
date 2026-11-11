@@ -37,7 +37,7 @@ await fs.cp(path.join(root,'tests'),path.join(rootPackage,'tests'),{recursive:tr
 await fs.copyFile(path.join(root,'hpdev.toml'),path.join(rootPackage,'hpdev.toml'));
 await readableTree(rootPackage);await fs.chmod(path.join(rootPackage,'bin/hpdev.cjs'),0o755);
 await fs.mkdir(path.join(platformPackage,'bin'),{recursive:true});
-await fs.writeFile(path.join(platformPackage,'package.json'),JSON.stringify({name,version:metadata.version,description:`HP Prime Development Toolkit native executable (${target})`,license:'MIT',os:[os],cpu:[cpu],files:['bin','licenses','LICENSE','THIRD_PARTY_NOTICES.md','SHA256SUMS']},null,2)+'\n');
+await fs.writeFile(path.join(platformPackage,'package.json'),JSON.stringify({name,version:metadata.version,description:`HP Prime PPL terminal toolkit: native executable for ${os} ${cpu}`,license:'MIT',repository:metadata.repository,homepage:metadata.homepage,bugs:metadata.bugs,keywords:metadata.keywords,os:[os],cpu:[cpu],files:['bin','licenses','LICENSE','THIRD_PARTY_NOTICES.md','SHA256SUMS']},null,2)+'\n');
 const executable=os==='win32'?'hpdev.exe':'hpdev';const destination=path.join(platformPackage,'bin',executable);
 await fs.copyFile(path.resolve(binary),destination);if(os!=='win32')await fs.chmod(destination,0o755);
 const digest=createHash('sha256').update(await fs.readFile(destination)).digest('hex');
@@ -56,4 +56,9 @@ await fs.writeFile(path.join(nativeDirectory,'SHA256SUMS'),`${digest}  ${executa
 await readableTree(nativeDirectory);if(os!=='win32')await fs.chmod(path.join(nativeDirectory,executable),0o755);
 const archive=`${nativeDirectory}.tar.gz`;execFileSync('tar',['-czf',archive,'-C',path.dirname(nativeDirectory),path.basename(nativeDirectory)]);
 const archiveDigest=createHash('sha256').update(await fs.readFile(archive)).digest('hex');await fs.writeFile(`${archive}.sha256`,`${archiveDigest}  ${path.basename(archive)}\n`);
-console.log(JSON.stringify({version:metadata.version,target,rootPackage,platformPackage,nativeArchive:archive,sha256:digest}));
+// Pack the exact publishable artifacts now, so retries never rebuild a version.
+const npmTarballs=[platformPackage,rootPackage].map(directory=>{
+  const packed=JSON.parse(execFileSync(process.platform==='win32'?'npm.cmd':'npm',['pack','--json','--ignore-scripts','--pack-destination',output],{cwd:directory,encoding:'utf8',shell:process.platform==='win32',maxBuffer:4*1024*1024}));
+  return path.join(output,packed[0].filename);
+});
+console.log(JSON.stringify({version:metadata.version,target,rootPackage,platformPackage,nativeArchive:archive,npmTarballs,sha256:digest}));
