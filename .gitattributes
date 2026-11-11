@@ -1,0 +1,4 @@
+# Keep npm launcher bytes identical across native build runners.
+* text=auto eol=lf
+*.png -text
+*.hpprgm -text
