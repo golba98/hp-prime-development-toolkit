@@ -1,0 +1,278 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HP Prime Development Toolkit report v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "version",
+    "operation",
+    "engine",
+    "file",
+    "source",
+    "status",
+    "exit_code",
+    "diagnostics",
+    "compatibility_limitations",
+    "entry",
+    "output",
+    "return_value",
+    "runtime_error",
+    "error",
+    "stack",
+    "artifacts",
+    "duration_ms",
+    "instructions",
+    "frames_presented",
+    "trace",
+    "data"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "version": {
+      "type": "string"
+    },
+    "operation": {
+      "type": "string"
+    },
+    "engine": {
+      "const": "native"
+    },
+    "file": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "source": {
+      "anyOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "status": {
+      "enum": [
+        "success",
+        "invalid_source",
+        "policy_failed",
+        "test_failed",
+        "invalid_request",
+        "runtime_error",
+        "timed_out",
+        "io_error",
+        "resource_limit",
+        "input_exhausted",
+        "unsupported",
+        "infrastructure_error",
+        "cancelled"
+      ]
+    },
+    "exit_code": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/diagnostic"
+      }
+    },
+    "compatibility_limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "entry": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "output": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "return_value": {
+      "anyOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "runtime_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "stack": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/frame"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "duration_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "instructions": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "frames_presented": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "trace": {
+      "type": "array"
+    },
+    "data": {}
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "location": {
+      "type": "object",
+      "required": [
+        "file",
+        "line",
+        "column",
+        "start_byte",
+        "end_byte"
+      ],
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "start_byte": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_byte": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": [
+        "severity",
+        "class",
+        "code",
+        "message",
+        "location",
+        "hint",
+        "unverified"
+      ],
+      "properties": {
+        "severity": {
+          "enum": [
+            "error",
+            "warning",
+            "note"
+          ]
+        },
+        "class": {
+          "enum": [
+            "syntax",
+            "semantic",
+            "compatibility",
+            "runtime"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/location"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unverified": {
+          "type": "boolean"
+        }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "required": [
+        "function",
+        "location"
+      ],
+      "properties": {
+        "function": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        }
+      }
+    }
+  }
+}

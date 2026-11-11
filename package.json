@@ -1,0 +1,10 @@
+{
+  "name": "hpdev-development",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test:npm": "node scripts/test-npm.mjs",
+    "test:browser": "playwright test"
+  },
+  "devDependencies": { "@playwright/test": "1.65.0" }
+}

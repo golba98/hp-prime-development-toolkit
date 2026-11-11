@@ -1,0 +1,5 @@
+EXPORT HELLO()
+BEGIN
+  PRINT("Hello from HP Prime!");
+  RETURN 0;
+END;

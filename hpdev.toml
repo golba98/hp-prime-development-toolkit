@@ -1,0 +1,38 @@
+schema_version = 1
+
+[[test]]
+name = "hello"
+file = "examples/HELLO.ppl"
+[test.expect]
+stdout = ["Hello from HP Prime!"]
+return_value = { type = "real", value = "0" }
+
+[[test]]
+name = "square"
+file = "examples/SQUARE.ppl"
+args = "[7]"
+[test.expect]
+return_value = { type = "real", value = "49" }
+
+[[test]]
+name = "input and choose"
+file = "examples/INPUT.ppl"
+input = ["7"]
+choose = [2]
+[test.expect]
+stdout = ["9"]
+return_value = { type = "real", value = "9" }
+
+[[test]]
+name = "precise semantic error"
+file = "tests/fixtures/INVALID.ppl"
+operation = "check"
+[test.expect]
+status = "invalid_source"
+diagnostic_codes = ["undeclared-identifier"]
+
+[[test]]
+name = "native graphics"
+file = "examples/DRAW.hpprgm"
+[test.expect]
+png = "tests/snapshots/DRAW.png"
