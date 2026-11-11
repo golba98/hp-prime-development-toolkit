@@ -24,7 +24,7 @@ function ensure(condition, message) { if (!condition) throw new Error(message); 
 function tar(file, member) { return run('tar', ['-xOf', file, member]); }
 function tarBytes(file, member) { return execFileSync('tar', ['-xOf', file, member], { maxBuffer: 128 * 1024 * 1024 }); }
 function entries(file) {
-  const names = run('tar', ['-tzf', file]).trim().split('\n');
+  const names = run('tar', ['-tzf', file]).trim().split(/\r?\n/);
   ensure(names.every(name => !name.startsWith('/') && !name.split('/').includes('..')), `Unsafe archive paths: ${file}`);
   return names;
 }
@@ -125,7 +125,7 @@ export async function validateBundle(directory) {
   const expectedNames = new Set([pkg.name, ...Object.keys(pkg.optionalDependencies)]);
   ensure(manifest.npm.length === 6 && manifest.native.length === 5, 'Incomplete release manifest');
   for (const entry of manifest.npm) {
-    ensure(path.basename(entry.file) === entry.file && entry.file === `${entry.name}-${pkg.version}.tgz` && expectedNames.delete(entry.name), 'Unexpected or duplicate npm artifact');
+    ensure(entry.version === pkg.version && path.basename(entry.file) === entry.file && entry.file === `${entry.name}-${pkg.version}.tgz` && expectedNames.delete(entry.name), 'Unexpected or duplicate npm artifact');
     const platform = platforms.find(([, os, cpu]) => entry.name === `hp-prime-devkit-${os}-${cpu}`);
     ensure(integrity(await fs.readFile(path.join(directory, entry.file))) === entry.integrity, `Artifact integrity mismatch: ${entry.file}`);
     inspectPackage(path.join(directory, entry.file), platform ? { name: entry.name, version: pkg.version, os: platform[1], cpu: platform[2] } : pkg);
