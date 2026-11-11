@@ -89,6 +89,22 @@ function checksumList(manifest) {
   return [...manifest.npm.map(entry => ({ file: entry.file, sha256: entry.sha256 })), ...manifest.native]
     .map(entry => `${entry.sha256}  ${entry.file}\n`).join('');
 }
+function launcherMembers(file) {
+  const names = entries(file);
+  const rows = run('tar', ['-tvzf', file]).trim().split(/\r?\n/);
+  return names.map((name, index) => ({ name, mode: rows[index].slice(0, 10), sha256: name.endsWith('/') ? '' : digest(tarBytes(file, name)) }));
+}
+export function verifyLauncherAgreement(canonical, candidate, os) {
+  const expected = new Map(canonical.map(entry => [entry.name, entry]));
+  ensure(candidate.length === expected.size && candidate.every(entry => {
+    const original = expected.get(entry.name);
+    expected.delete(entry.name);
+    if (!original || original.sha256 !== entry.sha256) return false;
+    const windowsBinMode = os === 'win32' && entry.name === 'package/bin/hpdev.cjs'
+      && original.mode === '-rwxr-xr-x' && entry.mode === '-rw-r--r--';
+    return original.mode === entry.mode || windowsBinMode;
+  }), 'Conflicting launcher payloads or file permissions');
+}
 export function inspectNative(file, version, target, os, binaryHash) {
   const names = entries(file);
   const base = `hpdev-${version}-${target}`;
@@ -107,7 +123,7 @@ export async function prepare(source, output) {
   await fs.mkdir(output, { recursive: true });
   ensure((await fs.readdir(output)).length === 0, 'Release output directory must be empty');
   const manifest = { version: pkg.version, commit: process.env.RELEASE_SHA || run('git', ['rev-parse', 'HEAD']).trim(), npm: [], native: [] };
-  let launcherIntegrity;
+  let launcherIntegrity, canonicalMembers;
   for (const [index, [target, os, cpu]] of platforms.entries()) {
     const directory = path.join(source, `hpdev-${target}`);
     const platform = { name: `hp-prime-devkit-${os}-${cpu}`, version: pkg.version, os, cpu };
@@ -115,12 +131,16 @@ export async function prepare(source, output) {
     const expectedFiles = new Set([`${platform.name}-${pkg.version}.tgz`, `${pkg.name}-${pkg.version}.tgz`, archive, `${archive}.sha256`]);
     const files = await fs.readdir(directory, { withFileTypes: true });
     ensure(files.length === expectedFiles.size && files.every(entry => entry.isFile() && expectedFiles.delete(entry.name)), `Missing or unexpected files for ${target}`);
-    // Every runner's launcher must agree; Linux x64 supplies the one retained copy.
+    // Windows npm does not retain the Unix launcher executable bit. Compare all
+    // payloads and allow only that known mode difference; publish Linux x64 bytes.
     const launcher = path.join(directory, `${pkg.name}-${pkg.version}.tgz`);
     inspectPackage(launcher, pkg);
     const currentIntegrity = integrity(await fs.readFile(launcher));
-    if (index === 0) launcherIntegrity = currentIntegrity;
-    ensure(currentIntegrity === launcherIntegrity, `Conflicting launcher artifacts from ${target}`);
+    const members = launcherMembers(launcher);
+    if (index === 0) { launcherIntegrity = currentIntegrity; canonicalMembers = members; }
+    verifyLauncherAgreement(canonicalMembers, members, os);
+    ensure(os === 'win32' || currentIntegrity === launcherIntegrity, `Conflicting launcher artifacts from ${target}`);
+    if (currentIntegrity !== launcherIntegrity) console.log('Validated Windows launcher mode variation; retaining the exact Linux x64 launcher tarball');
     let binaryHash;
     for (const expected of index === 0 ? [platform, pkg] : [platform]) {
       const file = `${expected.name}-${pkg.version}.tgz`;

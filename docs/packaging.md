@@ -173,9 +173,12 @@ sidecars, an aggregate `SHA256SUMS` covering the eleven tarballs, and
 `release-manifest.json` with commit, version, SHA-256 and npm SHA-512 integrity.
 
 Only the five expected platform directories and four expected files per directory
-are accepted as input. All runner launcher tarballs must match byte-for-byte;
-Linux x64 supplies the retained copy. LF checkout rules make that comparison
-portable. Extra files, missing platforms, duplicate archive members, links,
+are accepted as input. All runner launcher payloads and file modes must agree, with one explicit
+exception: Windows npm records the launcher executable as mode 0644 instead of
+0755. That sole mode difference is logged and accepted only for the Windows
+copy; file contents must still match. Linux x64 supplies the exact retained
+tarball, and other runners must match it byte-for-byte. LF checkout rules keep
+source bytes portable. Extra files, missing platforms, duplicate archive members, links,
 conflicting launchers, wrong identities or mismatched native/npm binaries fail.
 Reused bundles are fully revalidated against the selected commit.
 For publication reuse, the source run must also have executed the reviewed

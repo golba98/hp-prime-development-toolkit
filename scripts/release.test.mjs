@@ -314,3 +314,18 @@ test('reused bundles require the exact tag workflow identity, not self-reported 
     { head_repository: { full_name: 'someone/fork' } },
   ]) assert.throws(() => validateSourceRun({ ...record, ...changed }, commit, tag), /tag-dispatched run/);
 });
+
+test('Windows launcher executable-mode variation never hides changed payloads', async () => {
+  const { verifyLauncherAgreement } = await import('./release.mjs');
+  const original = [{ name: 'package/bin/hpdev.cjs', mode: '-rwxr-xr-x', sha256: 'same' },
+    { name: 'package/README.md', mode: '-rw-r--r--', sha256: 'readme' }];
+  const windows = structuredClone(original);
+  windows[0].mode = '-rw-r--r--';
+  verifyLauncherAgreement(original, windows, 'win32');
+  assert.throws(() => verifyLauncherAgreement(original, windows, 'linux'), /Conflicting launcher/);
+  windows[0].sha256 = 'changed';
+  assert.throws(() => verifyLauncherAgreement(original, windows, 'win32'), /Conflicting launcher/);
+  windows[0].sha256 = 'same';
+  windows[1].mode = '-rwxr-xr-x';
+  assert.throws(() => verifyLauncherAgreement(original, windows, 'win32'), /Conflicting launcher/);
+});
