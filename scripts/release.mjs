@@ -45,8 +45,8 @@ export async function metadata(directory = root) {
 export function resolveRef(ref, publish, directory = root, workflowRef = process.env.GITHUB_REF) {
   ensure(ref && !ref.startsWith('-') && !/[\r\n]/.test(ref), 'Invalid release ref');
   if (publish) {
-    ensure(workflowRef === 'refs/heads/main', 'Publish must be dispatched from the main workflow');
     ensure(/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(ref), 'Publish requires a stable vMAJOR.MINOR.PATCH tag');
+    ensure(workflowRef === `refs/tags/${ref}`, 'Publish must be dispatched from the selected version tag');
   }
   const sha = run('git', ['rev-parse', '--verify', '--end-of-options', `${publish ? `refs/tags/${ref}` : ref}^{commit}`], directory).trim();
   if (publish) run('git', ['merge-base', '--is-ancestor', sha, 'origin/main'], directory);
@@ -56,6 +56,7 @@ export async function validateRef(directory = root) {
   const ref = process.env.RELEASE_REF || 'main';
   const publish = process.env.RELEASE_PUBLISH === 'true';
   const sha = resolveRef(ref, publish, directory);
+  if (publish) ensure(process.env.GITHUB_SHA === sha, 'Workflow provenance commit differs from the release tag');
   // Read the selected commit, not whichever branch hosts the dispatched workflow.
   const npm = JSON.parse(run('git', ['show', `${sha}:npm/package.json`], directory));
   validateMetadata(run('git', ['show', `${sha}:Cargo.toml`], directory), npm);

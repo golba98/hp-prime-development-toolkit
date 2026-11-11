@@ -80,7 +80,7 @@ test('version mismatch and missing platform dependencies are rejected', async t 
   await assert.rejects(metadata(directory), /five platform dependencies/);
 });
 
-test('publish refs require a real stable tag on main and a main workflow', async t => {
+test('publish refs require a real stable tag on main and the matching tag workflow', async t => {
   const directory = await temporary(t);
   const git = args => execFileSync('git', args, { cwd: directory, encoding: 'utf8' }).trim();
   git(['init', '-q', '-b', 'main']);
@@ -89,15 +89,15 @@ test('publish refs require a real stable tag on main and a main workflow', async
   git(['update-ref', 'refs/remotes/origin/main', sha]);
   git(['tag', 'v0.1.0']);
   assert.equal(resolveRef('main', false, directory), sha);
-  assert.equal(resolveRef('v0.1.0', true, directory, 'refs/heads/main'), sha);
+  assert.equal(resolveRef('v0.1.0', true, directory, 'refs/tags/v0.1.0'), sha);
   assert.throws(() => resolveRef('main', true, directory, 'refs/heads/main'), /stable/);
-  assert.throws(() => resolveRef('v0.1.0', true, directory, 'refs/heads/feature'), /main workflow/);
-  assert.throws(() => resolveRef('v0.2.0', true, directory, 'refs/heads/main'));
+  assert.throws(() => resolveRef('v0.1.0', true, directory, 'refs/heads/feature'), /selected version tag/);
+  assert.throws(() => resolveRef('v0.2.0', true, directory, 'refs/tags/v0.2.0'));
   assert.throws(() => resolveRef('--help', false, directory), /Invalid/);
   git(['checkout', '-qb', 'feature']);
   git(['-c', 'user.name=Release Test', '-c', 'user.email=release@example.invalid', 'commit', '--allow-empty', '-qm', 'outside main']);
   git(['tag', 'v0.2.0']);
-  assert.throws(() => resolveRef('v0.2.0', true, directory, 'refs/heads/main'));
+  assert.throws(() => resolveRef('v0.2.0', true, directory, 'refs/tags/v0.2.0'));
 });
 
 test('dry-run assembly validates all platforms and preserves package integrity', async t => {
@@ -265,13 +265,23 @@ test('tag validation reads the selected commit and checks dry-run tags too', asy
   git(['add', '.']);
   git(['-c', 'user.name=Release Test', '-c', 'user.email=release@example.invalid', 'commit', '-qm', 'metadata']);
   git(['tag', 'v9.9.9']);
-  const previous = { RELEASE_REF: process.env.RELEASE_REF, RELEASE_PUBLISH: process.env.RELEASE_PUBLISH };
+  const previous = Object.fromEntries(['RELEASE_REF', 'RELEASE_PUBLISH', 'GITHUB_REF', 'GITHUB_SHA'].map(key => [key, process.env[key]]));
   t.after(() => { for (const [key, value] of Object.entries(previous)) if (value === undefined) delete process.env[key]; else process.env[key] = value; });
   process.env.RELEASE_REF = 'v9.9.9';
   process.env.RELEASE_PUBLISH = 'false';
   await assert.rejects(validateRef(directory), /Tag and package versions/);
   process.env.RELEASE_REF = 'main';
   assert.equal((await validateRef(directory)).version, '0.1.0');
+  const sha = git(['rev-parse', 'HEAD']);
+  git(['update-ref', 'refs/remotes/origin/main', sha]);
+  git(['tag', 'v0.1.0']);
+  process.env.RELEASE_REF = 'v0.1.0';
+  process.env.RELEASE_PUBLISH = 'true';
+  process.env.GITHUB_REF = 'refs/tags/v0.1.0';
+  process.env.GITHUB_SHA = sha;
+  assert.equal((await validateRef(directory)).sha, sha);
+  process.env.GITHUB_SHA = 'b'.repeat(40);
+  await assert.rejects(validateRef(directory), /Workflow provenance commit differs/);
 });
 
 test('downloaded GitHub checksums and wrong runners fail explicitly', async t => {

@@ -115,7 +115,7 @@ The manual workflow follows these gates:
 
 1. **Validate:** resolve the requested commit; check the stable Cargo workspace
    version, launcher and exactly five dependency versions; enforce matching tags.
-   Publication is dispatched from `main` and requires an existing tag on `main`.
+   Publication is dispatched from the selected version tag, which must be on `main`; the workflow SHA must match it so npm provenance names the exact artifact source.
 2. **Check and prepare:** all CI gates must pass. Validate the complete artifact
    set and collect one source-bound bundle.
 3. **Publish npm:** after protected environment approval, check all six registry
@@ -188,7 +188,7 @@ npm package ownership, GitHub environments or branch/tag rules.
   If another account owns one, obtain legitimate ownership or choose new names and
   update every binding before proceeding.
 - Create the GitHub environment **`npm-release`**, require maintainer review,
-  prevent self-review where supported, and restrict deployments to `main`.
+  prevent self-review where supported, and restrict deployments to version tags matching `v*` (no branches).
   Both npm publication and final GitHub visibility use this environment.
 - Protect `main` and version tags against unauthorized changes. Permit GitHub
   Actions to create pull requests if the repository's contribution process needs it;
@@ -207,7 +207,7 @@ release finalization.
 1. Merge this release infrastructure. Obtain explicit approval to create
    `v0.1.0` at the chosen reviewed `main` commit. The maintainer creates and
    pushes that tag; this work does not do so.
-2. Run **Manual release** with `ref=v0.1.0`, `publish=false`. Review every
+2. Run **Manual release** from tag `v0.1.0` with `ref=v0.1.0`, `publish=false`. Review every
    platform/browser result, notices and artifact contents. Download and retain
    its exact `release-bundle`, run ID and manifest commit outside the checkout.
 3. Check out the same tag. Set `RELEASE_SHA` to the manifest commit and verify:
@@ -242,10 +242,17 @@ release finalization.
    within **two days**. An exact-version skip during bootstrap finalization does
    not validate that configuration. Configure or recreate it just before the next
    new version if necessary; expiry is not evidence of a failed v0.1.0 bootstrap.
-7. Obtain approval to finalize the public GitHub release. Dispatch from `main`
+7. Obtain approval to finalize the public GitHub release. Dispatch the workflow from tag `v0.1.0`
    with `ref=v0.1.0`, `publish=true`, and `bundle_run_id=REVIEWED_RUN_ID`.
    Approve the environment gates. Existing exact npm uploads are verified and
    skipped; registry, draft archive and public download tests still run.
+   The workflow selector and input must both name the same tag. For example,
+   after explicit approval:
+
+   ```sh
+   gh workflow run release.yml --ref v0.1.0 -f ref=v0.1.0 -f publish=true -f bundle_run_id=REVIEWED_RUN_ID
+   ```
+
 8. Only after all five final public checks pass may a follow-up documentation
    change remove the README's unpublished notice.
 
@@ -282,7 +289,7 @@ Nothing in this workflow performs those actions automatically.
 | Symptom | Check or recovery |
 | --- | --- |
 | OIDC ENEEDAUTH / E404 | Node/npm versions, exact owner/repository/workflow/environment fields, allowed direct-publish action, two-day expiry and GitHub-hosted runner |
-| Waiting for approval | Configure/review `npm-release`; verify its `main` deployment rule |
+| Waiting for approval | Configure/review `npm-release`; verify its `v*` tag deployment rule |
 | Missing optional dependency | Install with optional dependencies enabled; confirm all five exact versions reached npm |
 | Published integrity differs | Stop. Retain the reviewed bundle and inspect ownership/version history; never overwrite or accept different bytes |
 | Registry scanning delay | Visibility checks are bounded; retry failed jobs with the preserved bundle after npm exposes the version |
