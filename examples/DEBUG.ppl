@@ -1,0 +1,16 @@
+EXPORT GV:=5;
+DOUBLE(X)
+BEGIN
+  LOCAL Y;
+  Y:=X*2;
+  RETURN Y;
+END;
+
+EXPORT DEBUG()
+BEGIN
+  LOCAL A,B;
+  A:=3;
+  B:=DOUBLE(A);
+  PRINT(B);
+  RETURN B+GV;
+END;

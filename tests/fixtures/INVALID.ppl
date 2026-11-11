@@ -1,0 +1,4 @@
+EXPORT INVALID()
+BEGIN
+  RETURN missing;
+END;

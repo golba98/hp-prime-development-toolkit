@@ -1,0 +1,13 @@
+EXPORT INPUTDEMO()
+BEGIN
+  LOCAL N:=0,C:=0;
+  IF INPUT(N,"Number","Value","Enter a number",0,7)==0 THEN
+    RETURN -1;
+  END;
+  IF CHOOSE(C,"Add to number","One","Two","Three")==0 THEN
+    RETURN -1;
+  END;
+  MSGBOX("Result: "+(N+C));
+  PRINT(N+C);
+  RETURN N+C;
+END;

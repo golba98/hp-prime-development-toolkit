@@ -1,0 +1,35 @@
+[package]
+name = "hpdev-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Standalone terminal HP Prime PPL developer toolkit"
+
+[[bin]]
+name = "hpdev"
+path = "src/main.rs"
+
+[features]
+default = ["web"]
+web = ["dep:axum", "dep:tokio", "dep:futures-util", "dep:getrandom", "dep:open"]
+
+[dependencies]
+hpdev-core.workspace = true
+ppl-graphics.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+toml.workspace = true
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.28"
+ratatui = "0.29"
+ctrlc = { version = "3", features = ["termination"] }
+axum = { version = "0.8", features = ["ws"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time"], optional = true }
+futures-util = { version = "0.3", optional = true }
+getrandom = { version = "0.3", optional = true }
+open = { version = "5", optional = true }
+
+[dev-dependencies]
+portable-pty = "0.9"
+tungstenite = "0.29"

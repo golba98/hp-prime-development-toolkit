@@ -1,0 +1,27 @@
+[workspace]
+members = ["crates/hpdev-core", "crates/hpdev-cli"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/golba98/hp-prime-development-toolkit"
+
+[workspace.dependencies]
+hpdev-core = { path = "crates/hpdev-core" }
+ppl-engine = { git = "https://github.com/golba98/hp-prime-emulator", rev = "8d7535ec432e3c66f4f210f32a4ae58c5911d96d" }
+ppl-syntax = { git = "https://github.com/golba98/hp-prime-emulator", rev = "8d7535ec432e3c66f4f210f32a4ae58c5911d96d" }
+ppl-compiler = { git = "https://github.com/golba98/hp-prime-emulator", rev = "8d7535ec432e3c66f4f210f32a4ae58c5911d96d" }
+ppl-vm = { git = "https://github.com/golba98/hp-prime-emulator", rev = "8d7535ec432e3c66f4f210f32a4ae58c5911d96d" }
+ppl-graphics = { git = "https://github.com/golba98/hp-prime-emulator", rev = "8d7535ec432e3c66f4f210f32a4ae58c5911d96d" }
+ppl-compat = { git = "https://github.com/golba98/hp-prime-emulator", rev = "8d7535ec432e3c66f4f210f32a4ae58c5911d96d" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+toml = "0.9"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
