@@ -1,9 +1,12 @@
 {
   "name": "hp-prime-devkit",
   "version": "0.1.0",
-  "description": "Standalone native Rust HP Prime PPL developer toolkit",
+  "description": "Check, run, debug, test, and preview HP Prime PPL programs from your terminal",
   "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/golba98/hp-prime-development-toolkit.git" },
+  "homepage": "https://github.com/golba98/hp-prime-development-toolkit#readme",
+  "bugs": "https://github.com/golba98/hp-prime-development-toolkit/issues",
+  "keywords": ["hp-prime", "hp-ppl", "ppl", "calculator", "rust", "cli", "developer-tools", "debugger", "emulator"],
   "engines": { "node": ">=18" },
   "bin": { "hpdev": "bin/hpdev.cjs" },
   "files": ["bin", "examples", "docs", "hpdev.toml", "tests/fixtures", "tests/snapshots", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"],
