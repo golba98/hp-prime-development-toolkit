@@ -3,6 +3,12 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: Exact commit to check and package
+        required: true
+        type: string
 permissions:
   contents: read
 jobs:
@@ -29,6 +35,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -37,6 +45,7 @@ jobs:
         with:
           node-version: '22'
       - run: cargo fmt --all -- --check
+      - run: node --test scripts/release.test.mjs
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo test --locked --workspace
       - run: cargo clippy --locked --workspace --all-targets --no-default-features -- -D warnings
@@ -51,11 +60,14 @@ jobs:
           path: |
             dist/*.tar.gz
             dist/*.sha256
-            dist/npm/
+            dist/*.tgz
+          if-no-files-found: error
   browser:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-node@v4
         with:
@@ -69,3 +81,26 @@ jobs:
         with:
           name: browser-test-results
           path: test-results/
+  distribution:
+    needs: [native, browser]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hpdev-*
+          path: artifacts
+      - name: Validate the complete distribution without publishing
+        env:
+          RELEASE_SHA: ${{ inputs.ref || github.sha }}
+        run: node scripts/release.mjs prepare artifacts dist/validated-release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validated-distribution
+          path: dist/validated-release/
+          if-no-files-found: error

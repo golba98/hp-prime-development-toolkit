@@ -1,40 +1,65 @@
 # HP Prime Development Toolkit
 
-Check, execute, debug and preview HP Prime PPL programs from a terminal. `hpdev`
-is a standalone Rust application built on the native engine from
-[HP Prime Emulator](https://github.com/golba98/hp-prime-emulator). It requires
-neither the emulator GUI, HP firmware nor a connected calculator.
+[![CI](https://github.com/golba98/hp-prime-development-toolkit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/golba98/hp-prime-development-toolkit/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![Status: unreleased](https://img.shields.io/badge/status-unreleased-orange.svg)](docs/packaging.md)
+
+**Write PPL on your computer. Check it, run it, and see what it draws.**
+
+`hpdev` brings HP Prime PPL development to your terminal: compiler checks,
+execution, a stepping debugger, repeatable tests, and live display previews.
+It is a standalone Rust application built on the native engine from
+[HP Prime Emulator](https://github.com/golba98/hp-prime-emulator), with no GUI,
+HP firmware, or connected calculator required.
+
+[Install](#install) · [Quick start](#quick-start) · [Commands](#commands) · [Documentation](#documentation) · [Compatibility](#compatibility-and-troubleshooting)
+
+| Develop | Inspect | Automate |
+| --- | --- | --- |
+| Check and run `.ppl` / `.hpprgm` files | Step through code and inspect variables | Assert results and compare image snapshots |
+| Preview the 320×240 display in a terminal or browser | Export PNGs and execution traces | Watch files and consume JSON reports |
+
+<p align="center">
+  <img src="tests/snapshots/DRAW.png" width="320" height="240" alt="Native 320 by 240 framebuffer output from the DRAW example">
+  <br>
+  <sub>Actual framebuffer output from the included DRAW example.</sub>
+</p>
 
 The toolkit is an independent, unofficial project, not affiliated with or
 endorsed by HP. HP and HP Prime are trademarks of their respective owners.
 
 ## Install
 
-Packages and public releases have **not been published**. The prepared release
-installation command is:
+### Build from source
+
+Public npm packages and native releases have **not been published**. You can
+install from this checkout now (tested with Rust 1.96):
+
+```sh
+git clone https://github.com/golba98/hp-prime-development-toolkit.git
+cd hp-prime-development-toolkit
+cargo install --locked --path crates/hpdev-cli
+hpdev --help
+```
+
+The core needs no GUI, HID or Unicorn build dependencies. CI checks Linux
+x86_64/ARM64, Windows x86_64, and macOS ARM64/x86_64. All five platform checks
+must pass before a release; the CI badge above shows the current status.
+Linux release packaging targets musl for portability.
+
+### npm and native downloads — forthcoming
+
+After the first public release, the installation command will be:
 
 ```sh
 npm install -g hp-prime-devkit
 hpdev --version
 ```
 
-The npm launcher uses exact-version platform packages containing prebuilt
-binaries. It does not run a downloader or require Rust. Optional npm
-dependencies must be enabled. See [packaging](docs/packaging.md) for locally
-packing and installing the current implementation.
-
-Build and install from this checkout using Rust/Cargo (tested with Rust 1.96):
-
-```sh
-cargo build --locked --release --bin hpdev
-cargo install --locked --path crates/hpdev-cli
-hpdev --help
-```
-
-Linux x86_64 is locally tested. CI is configured for Linux x86_64/ARM64,
-Windows x86_64, and macOS ARM64/x86_64; those other platforms require successful
-CI verification before a release. The core needs no GUI, HID or Unicorn build
-dependencies. Linux release packaging targets musl for portability.
+The npm launcher installs an exact-version prebuilt executable for your platform;
+Rust is not required. Keep npm optional dependencies enabled. Standalone archives
+will also be available from
+[GitHub Releases](https://github.com/golba98/hp-prime-development-toolkit/releases)
+for installation without Node or Rust. See [packaging](docs/packaging.md) for
+local packages and the release process.
 
 ## Quick start
 
@@ -233,10 +258,16 @@ controls differ from firmware. No physical-device parity is claimed.
   reach the same machine's loopback interface.
 - Timeout: inspect loops and input, or explicitly raise the deadline/budget.
 
-## Development and license
+## Documentation
 
-See [architecture](docs/architecture.md), [JSON API](docs/json-api.md),
-[packaging](docs/packaging.md) and [test manifests](docs/testing.md).
+| Guide | What you will find |
+| --- | --- |
+| [Architecture](docs/architecture.md) | Native engine, worker isolation, and viewers |
+| [JSON API](docs/json-api.md) | Structured reports and automation interfaces |
+| [Testing](docs/testing.md) | Test manifests, assertions, and image snapshots |
+| [Packaging and releases](docs/packaging.md) | Local packages, release dry runs, and publishing setup |
+
+## Development and license
 
 ```sh
 cargo fmt --all -- --check
