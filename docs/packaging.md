@@ -1,9 +1,11 @@
 # Packaging and the first public release
 
-The toolkit is **unpublished**. Building, packing and running a dry run do not
-authorize publication. Do not create the release tag, bootstrap npm packages or
-dispatch a publishing run until the maintainer explicitly approves that action.
-The README's unpublished notice remains until public installation checks succeed.
+The `v0.1.0` tag exists and all six npm packages were manually published from the
+successful dry-run bundle. The GitHub release and cross-platform public
+verification remain unfinished; use the one-time recovery below. Building,
+packing and running a dry run do not authorize publication. Further tags and npm
+publication require explicit maintainer approval. The README's unpublished notice
+remains until public installation checks succeed.
 
 ## Distribution layout
 
@@ -267,6 +269,74 @@ release finalization.
    change remove the README's unpublished notice.
 
 ## Later releases, retries and rollback limits
+
+### One-time v0.1.0 recovery from main
+
+Publishing run [43127309075](https://github.com/golba98/hp-prime-development-toolkit/actions/runs/43127309075)
+failed while checking the reused source run: the API returned
+`name: "Release v0.1.0 (dry run)"`, while the validator expected the static workflow
+name `Manual release`. Workflow identity now uses the workflow path plus event,
+completion status, tag branch, commit, repository and expected release title.
+Changing `main` cannot fix the workflow code already tagged as `v0.1.0`.
+
+After this fix merges, use **Recover v0.1.0 release**, dispatched from **main**.
+It accepts no inputs and uses the reviewed recovery code at the dispatch commit.
+Its immutable recovery pins are:
+
+| Item | Required value |
+| --- | --- |
+| Successful source dry run | `43124712655`, attempt 1, `release.yml` workflow ID `415260017` |
+| Artifact source commit | `435889a144b9cb011253eca51dc3c3916508e86c` |
+| Existing annotated tag | `v0.1.0`, object `ab4ac14fe58f8825f7f97793ceae1c23d25b45c0` |
+| Original `release-bundle` artifact | `13902762171` |
+| Original artifact ZIP SHA-256 | `f6d720f123433a450f1e3d53fd74fc1b78207d663cb8329a2bf9f39edfb9bfd1` |
+| Original manifest SHA-256 | `00452ea100e849ac7f74f7841d10c7aba717aac77cf030d51c1b97822af64c17` |
+
+The manifest fixture in `scripts/fixtures/v0.1.0-release-manifest.json` records
+the original manifest bytes for review and regression testing. The recovery
+checks the API run, attempt, artifact ID/digest/expiry and remote annotated tag
+before downloading that artifact by ID from the original run. It then checks
+the independently pinned manifest hash, every bundle file and all six existing
+npm `dist.integrity` values. Both the download action's ZIP digest check and the
+independently pinned manifest hash check are fatal on mismatch. Missing or different npm versions
+abort; this workflow has no npm upload command, npm publishing secret or OIDC
+permission. It never assembles or rebuilds release artifacts.
+
+All five native runners must install the existing exact public npm version and
+pass version, help, dependency-selection, binary checksum and SQUARE checks.
+Both draft staging and finalization use the **existing `npm-release` environment**.
+Staging attaches the exact original archives and checksums; existing assets must
+match byte-for-byte and are never overwritten. All five runners then download,
+verify and execute the actual draft archives. Only after those checks can the
+finalization job make the draft public. All five runners subsequently repeat
+public npm installation and unauthenticated GitHub archive checks. Jobs are
+serialized with the normal release workflow.
+
+The environment currently permits only tags matching `v*`, which blocks a
+workflow dispatched from `main`. Before recovery, a maintainer must add an
+**exact branch `main` deployment rule** to `npm-release`, keeping the `v*` tag rule
+and all other protections. Do not disable the environment, use an unrestricted
+branch rule or create a substitute environment. This PR does not change those
+repository settings. After reviewing and merging the fix and configuring that
+narrow rule, dispatch:
+
+```sh
+gh workflow run recover-v0.1.0.yml --ref main
+```
+
+Approve the existing environment gates where configured. A failed job can be
+retried with **Re-run failed jobs**; all reused files, registry integrities and
+existing release assets are checked again. A public release is never overwritten
+on retry. Do not rerun the broken tagged publishing workflow or move the tag.
+If the original artifact expires, stop; this workflow deliberately has no rebuild
+or alternative-artifact fallback.
+
+After **all five public verification jobs pass**, remove the temporary `main`
+deployment rule and delete this recovery workflow and helper in a follow-up PR.
+Only then update the README's unpublished notice. Keep the original tag, npm
+packages and bundle unchanged throughout recovery.
+
+### Normal release retries
 
 Bump the workspace version, development package/lockfile, launcher and all five
 optional dependencies together. Review/merge, obtain tag approval, create the tag,
