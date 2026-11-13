@@ -221,6 +221,10 @@ class Mac:
     def focus(self,w):
         app=self.msg(self.cls(b"NSRunningApplication"),"runningApplicationWithProcessIdentifier:",types=(C.c_int,),values=(self.windows[w]["pid"],))
         self.msg(app,"activateWithOptions:",C.c_bool,(C.c_ulong,),(2,))
+        deadline=time.monotonic()+4
+        while not self.msg(app,"isActive",C.c_bool):
+            assert time.monotonic()<deadline,"Calculator did not acquire application focus"
+            time.sleep(.04)
     def blur(self,w):
         # An unbundled Python process cannot always become a regular Cocoa
         # application. Activate Finder and verify the calculator loses focus.
