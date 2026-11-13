@@ -3,6 +3,7 @@ import ctypes as C
 import ctypes.util
 import os
 import struct
+import subprocess
 import sys
 import time
 from ctypes import wintypes as W
@@ -221,9 +222,14 @@ class Mac:
         app=self.msg(self.cls(b"NSRunningApplication"),"runningApplicationWithProcessIdentifier:",types=(C.c_int,),values=(self.windows[w]["pid"],))
         self.msg(app,"activateWithOptions:",C.c_bool,(C.c_ulong,),(2,))
     def blur(self,w):
-        app=self.msg(self.cls(b"NSApplication"),"sharedApplication")
-        assert self.msg(app,"setActivationPolicy:",C.c_bool,(C.c_long,),(0,))
-        self.msg(app,"activateIgnoringOtherApps:",None,(C.c_bool,),(True,))
+        # An unbundled Python process cannot always become a regular Cocoa
+        # application. Activate Finder and verify the calculator loses focus.
+        subprocess.run(["/usr/bin/open","-a","Finder"],check=True,timeout=5)
+        app=self.msg(self.cls(b"NSRunningApplication"),"runningApplicationWithProcessIdentifier:",types=(C.c_int,),values=(self.windows[w]["pid"],))
+        deadline=time.monotonic()+4
+        while self.msg(app,"isActive",C.c_bool):
+            assert time.monotonic()<deadline,"Finder did not acquire application focus"
+            time.sleep(.04)
     def cleanup(self):
         for window in self.ax_windows.values():self.release(window)
         self.ax_windows.clear()
@@ -340,7 +346,10 @@ class Mac:
         if min(rows)>height//2:
             pixels=[p for y in reversed(range(height)) for p in pixels[y*width:(y+1)*width]]
             rows=[height-1-y for y in rows]
-        offset=min(rows);self._dpi[w]=dpi;self.offset[w]=offset
+        # Retain the one-pixel native content separator above the first plain
+        # toolbar row. Dropping it changes a 512px client into 511px, which
+        # incorrectly reduces the inferred integer framebuffer scale to 1x.
+        offset=max(0,min(rows)-1);self._dpi[w]=dpi;self.offset[w]=offset
         return Image(width,height-offset,pixels[offset*width:])
 
 def driver():
