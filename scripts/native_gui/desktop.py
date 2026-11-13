@@ -187,6 +187,8 @@ class Mac:
         self.unicode=bind(self.cg,"CGEventKeyboardSetUnicodeString",None,C.c_void_p,C.c_ulong,C.c_void_p)
         self.windows={};self._dpi={};self.offset={};self.flags=0;self.ax_windows={}
         self.eventflags=bind(self.cg,"CGEventSetFlags",None,C.c_void_p,C.c_ulonglong)
+        self.runloop=bind(self.cf,"CFRunLoopRunInMode",C.c_int,C.c_void_p,C.c_double,C.c_bool)
+        self.runloop_mode=C.c_void_p.in_dll(self.cf,"kCFRunLoopDefaultMode")
     def msg(self,obj,name,result=C.c_void_p,types=(),values=()):
         return C.CFUNCTYPE(result,C.c_void_p,C.c_void_p,*types)(self.msgaddr)(obj,self.sel(name.encode()),*values)
     def value(self,dictionary,name,number=False):
@@ -222,18 +224,29 @@ class Mac:
         app=self.msg(self.cls(b"NSRunningApplication"),"runningApplicationWithProcessIdentifier:",types=(C.c_int,),values=(self.windows[w]["pid"],))
         self.msg(app,"activateWithOptions:",C.c_bool,(C.c_ulong,),(2,))
         deadline=time.monotonic()+4
-        while not self.msg(app,"isActive",C.c_bool):
+        while True:
+            # AppKit caches NSRunningApplication properties until the next
+            # main run-loop turn; sleeping alone does not refresh isActive.
+            self.runloop(self.runloop_mode,.02,False)
+            if self.msg(app,"isActive",C.c_bool):break
             assert time.monotonic()<deadline,"Calculator did not acquire application focus"
-            time.sleep(.04)
+        # Hosted Mac screens can be only 1024px wide. Keep debugger buttons
+        # reachable by real mouse events even when its window grows to 1080px.
+        window=self._ax_window(w);key=self.stringnew(None,b"AXPosition",0x08000100)
+        point=self.Point(0,25)
+        value=bind(self.ax,"AXValueCreate",C.c_void_p,C.c_int,C.c_void_p)(1,C.byref(point))
+        try:assert bind(self.ax,"AXUIElementSetAttributeValue",C.c_int,C.c_void_p,C.c_void_p,C.c_void_p)(window,key,value)==0
+        finally:self.release(value);self.release(key);self.release(window)
     def blur(self,w):
         # An unbundled Python process cannot always become a regular Cocoa
         # application. Activate Finder and verify the calculator loses focus.
         subprocess.run(["/usr/bin/open","-a","Finder"],check=True,timeout=5)
         app=self.msg(self.cls(b"NSRunningApplication"),"runningApplicationWithProcessIdentifier:",types=(C.c_int,),values=(self.windows[w]["pid"],))
         deadline=time.monotonic()+4
-        while self.msg(app,"isActive",C.c_bool):
+        while True:
+            self.runloop(self.runloop_mode,.02,False)
+            if not self.msg(app,"isActive",C.c_bool):break
             assert time.monotonic()<deadline,"Finder did not acquire application focus"
-            time.sleep(.04)
     def cleanup(self):
         for window in self.ax_windows.values():self.release(window)
         self.ax_windows.clear()
@@ -318,7 +331,12 @@ class Mac:
         finally:self.release(value);self.release(key);self.release(window)
     def maximize(self,w):self._press_button(w,"AXZoomButton")
     def dpi(self,w):
-        if w not in self._dpi:self.image(w)
+        deadline=time.monotonic()+4
+        while w not in self._dpi:
+            try:self.image(w)
+            except AssertionError:
+                if time.monotonic()>=deadline:raise
+                time.sleep(.04)
         return self._dpi[w]
     def size(self,w):
         image=self.image(w);return image.width,image.height

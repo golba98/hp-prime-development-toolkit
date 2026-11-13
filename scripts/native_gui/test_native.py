@@ -83,6 +83,7 @@ class App:
     def debugger(self):
         self.click(100,15);self.debug=True
         wait(lambda:self.desktop.size(self.window)[0]>=round(1080*self.desktop.dpi(self.window)),"inspector resize")
+        self.desktop.focus(self.window)
     def pause(self):
         self.click(670,47);self.state("Paused:")
     def command(self,text):
