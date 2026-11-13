@@ -13,12 +13,14 @@ def members(archive):
     result = []
     total = 0
     for item in archive.infolist():
-        name = item.filename
+        # ZipInfo normalizes Windows backslashes and truncates NULs in filename.
+        # Validate the original archive bytes before accepting that normalization.
+        name = item.orig_filename
         total += item.file_size
         if total > 512*1024*1024 or len(result)>100000:
             raise ValueError("ZIP exceeds distribution size/member limits")
         parts = PurePosixPath(name.rstrip("/")).parts
-        if (not name or "\\" in name or ":" in name or name.startswith("/")
+        if (not name or name != item.filename or "\\" in name or ":" in name or name.startswith("/")
                 or any(p in ("", ".", "..") for p in name.rstrip("/").split("/"))
                 or name.rstrip("/").casefold() in seen or item.file_size > MAX_MEMBER):
             raise ValueError("Unsafe, duplicate or oversized ZIP member: " + repr(name))

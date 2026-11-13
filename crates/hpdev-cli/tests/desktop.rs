@@ -255,19 +255,23 @@ impl App {
         assert_eq!(format.bits_per_pixel, 32);
         image
             .data
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|b| {
                 if self.conn.setup().image_byte_order == xproto::ImageOrder::LSB_FIRST {
-                    u32::from_le_bytes(b.try_into().unwrap()) & 0xffffff
+                    u32::from_le_bytes(*b) & 0xffffff
                 } else {
-                    u32::from_be_bytes(b.try_into().unwrap()) & 0xffffff
+                    u32::from_be_bytes(*b) & 0xffffff
                 }
             })
             .collect()
     }
     fn framebuffer(&self) -> Vec<u32> {
         self.pixels(0, 32, 640, 480)
-            .chunks_exact(1280)
+            .as_chunks::<1280>()
+            .0
+            .iter()
             .flat_map(|row| row[..640].iter().step_by(2).copied())
             .collect()
     }
@@ -397,7 +401,7 @@ fn bst_visualizer_uses_real_touch_dialog_keyboard_and_debugger() {
         &["--exit-on-finish"],
     );
     app.title_contains("Running");
-    thread::sleep(Duration::from_millis(200));
+    wait(|| app.framebuffer()[230 * 320 + 300] != 0xffffff);
     let empty = app.framebuffer();
     assert_eq!(empty.len(), 320 * 240);
     assert!(empty.iter().any(|p| *p != 0xffffff));

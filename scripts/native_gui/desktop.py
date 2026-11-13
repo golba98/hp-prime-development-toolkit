@@ -121,6 +121,8 @@ class Windows:
             time.sleep(.015)
     def click(self,w,x,y):
         point=W.POINT(round(x),round(y));assert self.origin(w,C.byref(point));self.cursor(point.x,point.y)
+        # Let the native motion event reach the app before injecting a button.
+        time.sleep(.04)
         for flags in [2,4]:
             event=self.Input(type=0);event.mouse.flags=flags
             assert self.send(1,C.byref(event),C.sizeof(event))==1
@@ -182,7 +184,7 @@ class Mac:
         self.mouseevent=bind(self.cg,"CGEventCreateMouseEvent",C.c_void_p,C.c_void_p,C.c_uint,Point,C.c_uint)
         self.post=bind(self.cg,"CGEventPost",None,C.c_uint,C.c_void_p)
         self.unicode=bind(self.cg,"CGEventKeyboardSetUnicodeString",None,C.c_void_p,C.c_ulong,C.c_void_p)
-        self.windows={};self._dpi={};self.offset={};self.flags=0
+        self.windows={};self._dpi={};self.offset={};self.flags=0;self.ax_windows={}
         self.eventflags=bind(self.cg,"CGEventSetFlags",None,C.c_void_p,C.c_ulonglong)
     def msg(self,obj,name,result=C.c_void_p,types=(),values=()):
         return C.CFUNCTYPE(result,C.c_void_p,C.c_void_p,*types)(self.msgaddr)(obj,self.sel(name.encode()),*values)
@@ -220,8 +222,11 @@ class Mac:
         self.msg(app,"activateWithOptions:",C.c_bool,(C.c_ulong,),(2,))
     def blur(self,w):
         app=self.msg(self.cls(b"NSApplication"),"sharedApplication")
+        assert self.msg(app,"setActivationPolicy:",C.c_bool,(C.c_long,),(0,))
         self.msg(app,"activateIgnoringOtherApps:",None,(C.c_bool,),(True,))
-    def cleanup(self):pass
+    def cleanup(self):
+        for window in self.ax_windows.values():self.release(window)
+        self.ax_windows.clear()
     def key(self,name,down):
         modifier={"shift":1<<17,"control":1<<18,"alt":1<<19,"command":1<<20}.get(name,0)
         if down:self.flags|=modifier
@@ -259,14 +264,22 @@ class Mac:
     def _ax_window(self,w):
         # Accessibility is used only for lifecycle operations unavailable through
         # Quartz's read-only window list; never change global TCC settings.
+        retain=bind(self.cf,"CFRetain",C.c_void_p,C.c_void_p)
+        if w in self.ax_windows:return retain(self.ax_windows[w])
         create=bind(self.ax,"AXUIElementCreateApplication",C.c_void_p,C.c_int)
         copy=bind(self.ax,"AXUIElementCopyAttributeValue",C.c_int,C.c_void_p,C.c_void_p,C.POINTER(C.c_void_p))
         app=create(self.windows[w]["pid"]);key=self.stringnew(None,b"AXWindows",0x08000100);out=C.c_void_p()
         try:
-            assert copy(app,key,C.byref(out))==0
+            deadline=time.monotonic()+4
+            while True:
+                assert copy(app,key,C.byref(out))==0
+                if out.value and self.arraylen(out)>0:break
+                if out.value:self.release(out);out=C.c_void_p()
+                assert time.monotonic()<deadline,"Application has no accessible native window"
+                time.sleep(.04)
             window=self.arrayget(out,0)
-            bind(self.cf,"CFRetain",C.c_void_p,C.c_void_p)(window)
-            return window
+            self.ax_windows[w]=retain(window)
+            return retain(window)
         finally:
             if out.value:self.release(out)
             self.release(key);self.release(app)
@@ -319,7 +332,9 @@ class Mac:
         def toolbar_at(y):
             def near(pixel):
                 return sum(abs(((pixel>>shift)&255)-((0x273344>>shift)&255)) for shift in (0,8,16))<=9
-            return all(near(pixels[y*width+min(width-1,round(x*dpi))]) for x in (10,210))
+            # These columns lie between Stop and the status label. Button
+            # interiors differ from the toolbar; using them crops off 31 rows.
+            return all(near(pixels[y*width+min(width-1,round(x*dpi))]) for x in (218,219))
         rows=[y for y in range(height) if toolbar_at(y)]
         assert rows,"captured image does not contain the actual hpdev toolbar"
         if min(rows)>height//2:

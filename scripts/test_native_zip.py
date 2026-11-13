@@ -34,6 +34,9 @@ class ArchiveTests(unittest.TestCase):
                 with zipfile.ZipFile(path,"w") as archive:
                     for name in names:
                         item=zipfile.ZipInfo(name)
+                        # Preserve hostile separators even on Windows, where
+                        # ZipInfo's constructor normally rewrites them to '/'.
+                        item.filename=name
                         if mode:item.external_attr=mode<<16
                         archive.writestr(item,b"payload")
                 with zipfile.ZipFile(path) as archive:

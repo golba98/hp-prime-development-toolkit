@@ -68,6 +68,15 @@ class App:
         image=self.desktop.image(self.window)
         x,y,scale=self.viewport(image)
         return [image.at(x+cx*scale,y+cy*scale) for cy in range(240) for cx in range(320)]
+    def settled_frame(self):
+        previous=None;since=time.monotonic()
+        def stable():
+            nonlocal previous,since
+            current=self.framebuffer()
+            if current!=previous:previous=current;since=time.monotonic()
+            return time.monotonic()-since>=.2
+        wait(stable,"completed static rendering")
+        return previous
     def touch(self,x,y):
         image=self.desktop.image(self.window);left,top,scale=self.viewport(image)
         self.desktop.click(self.window,left+x*scale,top+y*scale)
@@ -110,11 +119,14 @@ class NativeTests(unittest.TestCase):
         app=App(self.desktop,file,args);self.apps.append(app);return app
     def test_bst_real_input_menu_and_debugger(self):
         app=self.launch(ROOT/"tests/fixtures/BSTVisualizer.hpprgm",["--exit-on-finish"])
-        app.state("Running");empty=app.framebuffer()
+        app.state("Running")
+        wait(lambda:app.framebuffer()[230*320+300]!=0xffffff,"initial BST menu rendering")
+        empty=app.settled_frame()
         for value in ("42","21","84"):
             app.touch(25,230);app.state("input: Insert node")
             app.text(value);app.press("enter");app.state("Running")
-        tree=app.framebuffer();self.assertNotEqual(tree,empty)
+        wait(lambda:app.framebuffer()!=empty,"inserted BST rendering")
+        tree=app.settled_frame()
         app.press("down");wait(lambda:app.framebuffer()!=tree,"BST scroll down")
         app.press("up");wait(lambda:app.framebuffer()==tree,"BST scroll up")
         app.debugger();app.pause();app.command("print bst_size");app.command("stack")
