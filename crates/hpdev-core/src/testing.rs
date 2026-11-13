@@ -201,16 +201,25 @@ pub fn run_suite(
                     report.artifacts.push(reference.clone());
                     return Ok(());
                 }
-                let a = Grob::read_png(&bytes)?;
-                let b = Grob::read_png(
+                let actual_image = Grob::read_png(&bytes)?;
+                let reference_image = Grob::read_png(
                     &std::fs::read(&reference)
                         .map_err(|e| format!("reference {}: {e}", reference.display()))?,
                 )?;
-                let diff = compare_images(&Image::from(&a), &Image::from(&b), false)?;
+                let diff = compare_images(
+                    &Image::from(&actual_image),
+                    &Image::from(&reference_image),
+                    false,
+                )?;
                 let mut changed = 0;
-                let mut highlight = a.clone();
+                let mut highlight = actual_image.clone();
                 if diff.dimensions_equal {
-                    for (i, (x, y)) in a.pixels().iter().zip(b.pixels()).enumerate() {
+                    for (i, (x, y)) in actual_image
+                        .pixels()
+                        .iter()
+                        .zip(reference_image.pixels())
+                        .enumerate()
+                    {
                         let (xr, xg, xb) = ppl_graphics::channels(*x);
                         let (yr, yg, yb) = ppl_graphics::channels(*y);
                         if xr.abs_diff(yr) > case.expect.channel_tolerance
@@ -222,15 +231,23 @@ pub fn run_suite(
                         }
                     }
                 } else {
-                    changed = a.pixels().len().max(b.pixels().len());
+                    changed = actual_image
+                        .pixels()
+                        .len()
+                        .max(reference_image.pixels().len());
                 }
-                image_difference = json!({"exact":diff,"changed_above_tolerance":changed,"channel_tolerance":case.expect.channel_tolerance,"max_changed_pixels":case.expect.max_changed_pixels});
+                image_difference = json!({
+                    "exact": diff,
+                    "changed_above_tolerance": changed,
+                    "channel_tolerance": case.expect.channel_tolerance,
+                    "max_changed_pixels": case.expect.max_changed_pixels,
+                });
                 if !diff.dimensions_equal || changed > case.expect.max_changed_pixels {
                     std::fs::create_dir_all(artifacts).map_err(|e| e.to_string())?;
-                    for (suffix, image) in [("actual", &a), ("diff", &highlight)] {
+                    let mut guarded = protected.clone();
+                    guarded.extend(references.iter().cloned());
+                    for (suffix, image) in [("actual", &actual_image), ("diff", &highlight)] {
                         let output = artifacts.join(format!("case-{index}-{suffix}.png"));
-                        let mut guarded = protected.clone();
-                        guarded.extend(references.iter().cloned());
                         protect_output(&output, &guarded)?;
                         save_image(&output, image).map_err(|e| e.to_string())?;
                         report.artifacts.push(output);
@@ -253,12 +270,18 @@ pub fn run_suite(
         // Per-case execution screenshots live in a temporary directory. Only
         // retained references and differences belong in public artifact lists.
         actual.artifacts.retain(|p| !p.starts_with(temp.path()));
-        results.push(json!({"name":case.name,"passed":errors.is_empty(),"errors":errors,"image_difference":image_difference,"result":actual}));
+        results.push(json!({
+            "name": case.name,
+            "passed": errors.is_empty(),
+            "errors": errors,
+            "image_difference": image_difference,
+            "result": actual,
+        }));
     }
     if failed > 0 {
         report.fail("test_failed", 1, format!("{failed} test(s) failed"));
     }
-    report.data = json!({"passed":passed,"failed":failed,"cases":results});
+    report.data = json!({"passed": passed, "failed": failed, "cases": results});
     report.duration_ms = started.elapsed().as_secs_f64() * 1000.;
     report
 }

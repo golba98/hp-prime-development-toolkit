@@ -404,7 +404,7 @@ fn execute_inner(
     report.output = captured.output.clone();
     report.frames_presented = captured.frames;
     report.trace = captured.trace.clone();
-    report.data = json!({"dialogs":captured.dialogs,"debug_history":captured.debug_history});
+    report.data = json!({"dialogs": captured.dialogs, "debug_history": captured.debug_history});
     report.instructions = machine.steps();
     match result {
         Ok(value) => {
@@ -459,9 +459,11 @@ fn execute_inner(
         && report.runtime_error.is_some()
         && report.trace.len() < request.max_trace_events
     {
-        report.trace.push(
-            json!({"kind":"runtime_failure","message":report.runtime_error,"stack":report.stack}),
-        );
+        report.trace.push(json!({
+            "kind": "runtime_failure",
+            "message": report.runtime_error,
+            "stack": report.stack,
+        }));
     }
     drop(captured);
     if let Some(path) = &request.png {

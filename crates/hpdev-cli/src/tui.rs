@@ -446,51 +446,206 @@ impl TerminalUi {
         let status = &self.status;
         let dialog = &self.dialog;
         let command = &self.command;
-        let mut screen_rect = Rect::default();
-        self.terminal.draw(|frame|{
-            let area=frame.area();
-            let rows=Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(1),Constraint::Min(1),Constraint::Length(2)]).split(area);
-            frame.render_widget(Paragraph::new(format!("hpdev · {status} · frame {sequence}")),rows[0]);
-            let source=||{
-                snapshot.as_ref().map(|s|s.source_lines.iter().map(|(n,t)|Line::from(format!("{} {n:4} | {t}",if *n==s.location.line{"▶"}else{" "}))).collect::<Vec<_>>()).unwrap_or_else(||vec![Line::from("Waiting for a VM statement…")])
-            };
-            let variables=||{
-                let mut lines=vec![];
-                if let Some(s)=snapshot{
-                    lines.push(Line::from(format!("Frame #{} {}",s.selected_frame,s.function)));
-                    lines.push(Line::from("Locals"));for(n,v)in&s.locals{lines.push(Line::from(format!("{n} = {}",crate::cli::display_value(v))));}
-                    lines.push(Line::from("Globals"));for(n,v)in&s.globals{lines.push(Line::from(format!("{n} = {}",crate::cli::display_value(v))));}
-                    lines.push(Line::from("Stack"));for(i,f)in s.stack.iter().enumerate(){lines.push(Line::from(format!("#{i} {} :{}",f.function,f.location.line)));}
-                    lines.push(Line::from(format!("Breakpoints: {:?}",s.breakpoints)));
-                }lines
-            };
-            let draw_screen=|frame:&mut ratatui::Frame<'_>,area:Rect|->Rect{
-                let block=Block::default().title("Native display · 320×240").borders(Borders::ALL);let inner=block.inner(area);frame.render_widget(block,area);
-                let (rect,lines)=raster(pixels,inner,aspect,color);frame.render_widget(Paragraph::new(lines),rect);rect
-            };
-            if !debug{screen_rect=draw_screen(frame,rows[1]);}
-            else if area.width>=100 {
-                let cols=Layout::default().direction(Direction::Horizontal).constraints([Constraint::Percentage(55),Constraint::Percentage(45)]).split(rows[1]);
-                let left=Layout::default().direction(Direction::Vertical).constraints([Constraint::Percentage(65),Constraint::Percentage(35)]).split(cols[0]);
-                let right=Layout::default().direction(Direction::Vertical).constraints([Constraint::Percentage(45),Constraint::Percentage(55)]).split(cols[1]);
-                frame.render_widget(Paragraph::new(source()).block(Block::default().title("Source").borders(Borders::ALL)),left[0]);
-                let logs=log.iter().rev().take(left[1].height.saturating_sub(2)as usize).cloned().collect::<Vec<_>>().into_iter().rev().map(Line::from).collect::<Vec<_>>();
-                frame.render_widget(Paragraph::new(logs).block(Block::default().title("Output / inspector").borders(Borders::ALL)),left[1]);
-                frame.render_widget(Paragraph::new(variables()).scroll((scroll,0)).block(Block::default().title("Variables / stack · PgUp/PgDn").borders(Borders::ALL)),right[0]);
-                screen_rect=draw_screen(frame,right[1]);
-            }else{match page{
-                0=>{let split=Layout::default().direction(Direction::Vertical).constraints([Constraint::Percentage(65),Constraint::Percentage(35)]).split(rows[1]);frame.render_widget(Paragraph::new(source()).block(Block::default().title("Source · Tab changes panel").borders(Borders::ALL)),split[0]);frame.render_widget(Paragraph::new(log.iter().rev().take(split[1].height.saturating_sub(2)as usize).cloned().collect::<Vec<_>>().into_iter().rev().map(Line::from).collect::<Vec<_>>()).block(Block::default().title("Output / inspector").borders(Borders::ALL)),split[1]);}
-                1=>frame.render_widget(Paragraph::new(variables()).scroll((scroll,0)).block(Block::default().title("Variables / stack · Tab changes panel").borders(Borders::ALL)),rows[1]),
-                _=>screen_rect=draw_screen(frame,rows[1]),
-            }}
-            let footer=if let Some(command)=command{format!(":{command}")}else if debug{"s step · n next · o out · c continue · b break · x delete\nu/d frame · : command · Tab panels · Ctrl-C stop".into()}else{format!("Arrows / Enter / Esc / digits → calculator · Ctrl-C stop\n{}",log.back().map(String::as_str).unwrap_or(""))};
-            frame.render_widget(Paragraph::new(footer),rows[2]);
-            if let Some(editor)=dialog {
-                let width=area.width.saturating_sub(4).min(90);let height=area.height.saturating_sub(2).min(16);
-                let rect=Rect::new(area.x+(area.width-width)/2,area.y+(area.height-height)/2,width,height);
-                frame.render_widget(Clear,rect);frame.render_widget(Paragraph::new(editor.lines()).wrap(Wrap{trim:false}).block(Block::default().title(format!("{} · {}",editor.dialog.kind,editor.dialog.title)).borders(Borders::ALL)),rect);
+        let source_lines = || {
+            snapshot
+                .as_ref()
+                .map(|snapshot| {
+                    snapshot
+                        .source_lines
+                        .iter()
+                        .map(|(line, text)| {
+                            let marker = if *line == snapshot.location.line {
+                                "▶"
+                            } else {
+                                " "
+                            };
+                            Line::from(format!("{marker} {line:4} | {text}"))
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_else(|| vec![Line::from("Waiting for a VM statement…")])
+        };
+        let variable_lines = || {
+            let mut lines = vec![];
+            if let Some(snapshot) = snapshot {
+                lines.push(Line::from(format!(
+                    "Frame #{} {}",
+                    snapshot.selected_frame, snapshot.function
+                )));
+                for (title, values) in
+                    [("Locals", &snapshot.locals), ("Globals", &snapshot.globals)]
+                {
+                    lines.push(Line::from(title));
+                    for (name, value) in values {
+                        lines.push(Line::from(format!(
+                            "{name} = {}",
+                            crate::cli::display_value(value)
+                        )));
+                    }
+                }
+                lines.push(Line::from("Stack"));
+                for (index, frame) in snapshot.stack.iter().enumerate() {
+                    lines.push(Line::from(format!(
+                        "#{index} {} :{}",
+                        frame.function, frame.location.line
+                    )));
+                }
+                lines.push(Line::from(format!(
+                    "Breakpoints: {:?}",
+                    snapshot.breakpoints
+                )));
             }
-        }).map_err(|e|e.to_string())?;
+            lines
+        };
+        let output_lines = |height: u16| {
+            log.iter()
+                .skip(log.len().saturating_sub(height.saturating_sub(2) as usize))
+                .cloned()
+                .map(Line::from)
+                .collect::<Vec<_>>()
+        };
+        let mut screen_rect = Rect::default();
+        self.terminal
+            .draw(|frame| {
+                let area = frame.area();
+                let rows = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([
+                        Constraint::Length(1),
+                        Constraint::Min(1),
+                        Constraint::Length(2),
+                    ])
+                    .split(area);
+                frame.render_widget(
+                    Paragraph::new(format!("hpdev · {status} · frame {sequence}")),
+                    rows[0],
+                );
+                let draw_screen = |frame: &mut ratatui::Frame<'_>, area: Rect| -> Rect {
+                    let block = Block::default()
+                        .title("Native display · 320×240")
+                        .borders(Borders::ALL);
+                    let inner = block.inner(area);
+                    frame.render_widget(block, area);
+                    let (rect, lines) = raster(pixels, inner, aspect, color);
+                    frame.render_widget(Paragraph::new(lines), rect);
+                    rect
+                };
+                if !debug {
+                    screen_rect = draw_screen(frame, rows[1]);
+                } else if area.width >= 100 {
+                    let columns = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
+                        .split(rows[1]);
+                    let left = Layout::default()
+                        .direction(Direction::Vertical)
+                        .constraints([Constraint::Percentage(65), Constraint::Percentage(35)])
+                        .split(columns[0]);
+                    let right = Layout::default()
+                        .direction(Direction::Vertical)
+                        .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+                        .split(columns[1]);
+                    frame.render_widget(
+                        Paragraph::new(source_lines())
+                            .block(Block::default().title("Source").borders(Borders::ALL)),
+                        left[0],
+                    );
+                    frame.render_widget(
+                        Paragraph::new(output_lines(left[1].height)).block(
+                            Block::default()
+                                .title("Output / inspector")
+                                .borders(Borders::ALL),
+                        ),
+                        left[1],
+                    );
+                    frame.render_widget(
+                        Paragraph::new(variable_lines()).scroll((scroll, 0)).block(
+                            Block::default()
+                                .title("Variables / stack · PgUp/PgDn")
+                                .borders(Borders::ALL),
+                        ),
+                        right[0],
+                    );
+                    screen_rect = draw_screen(frame, right[1]);
+                } else {
+                    match page {
+                        0 => {
+                            let panels = Layout::default()
+                                .direction(Direction::Vertical)
+                                .constraints([
+                                    Constraint::Percentage(65),
+                                    Constraint::Percentage(35),
+                                ])
+                                .split(rows[1]);
+                            frame.render_widget(
+                                Paragraph::new(source_lines()).block(
+                                    Block::default()
+                                        .title("Source · Tab changes panel")
+                                        .borders(Borders::ALL),
+                                ),
+                                panels[0],
+                            );
+                            frame.render_widget(
+                                Paragraph::new(output_lines(panels[1].height)).block(
+                                    Block::default()
+                                        .title("Output / inspector")
+                                        .borders(Borders::ALL),
+                                ),
+                                panels[1],
+                            );
+                        }
+                        1 => frame.render_widget(
+                            Paragraph::new(variable_lines()).scroll((scroll, 0)).block(
+                                Block::default()
+                                    .title("Variables / stack · Tab changes panel")
+                                    .borders(Borders::ALL),
+                            ),
+                            rows[1],
+                        ),
+                        _ => screen_rect = draw_screen(frame, rows[1]),
+                    }
+                }
+                let footer = if let Some(command) = command {
+                    format!(":{command}")
+                } else if debug {
+                    concat!(
+                        "s step · n next · o out · c continue · b break · x delete\n",
+                        "u/d frame · : command · Tab panels · Ctrl-C stop",
+                    )
+                    .into()
+                } else {
+                    format!(
+                        "Arrows / Enter / Esc / digits → calculator · Ctrl-C stop\n{}",
+                        log.back().map(String::as_str).unwrap_or(""),
+                    )
+                };
+                frame.render_widget(Paragraph::new(footer), rows[2]);
+                if let Some(editor) = dialog {
+                    let width = area.width.saturating_sub(4).min(90);
+                    let height = area.height.saturating_sub(2).min(16);
+                    let rect = Rect::new(
+                        area.x + (area.width - width) / 2,
+                        area.y + (area.height - height) / 2,
+                        width,
+                        height,
+                    );
+                    frame.render_widget(Clear, rect);
+                    frame.render_widget(
+                        Paragraph::new(editor.lines())
+                            .wrap(Wrap { trim: false })
+                            .block(
+                                Block::default()
+                                    .title(format!(
+                                        "{} · {}",
+                                        editor.dialog.kind, editor.dialog.title
+                                    ))
+                                    .borders(Borders::ALL),
+                            ),
+                        rect,
+                    );
+                }
+            })
+            .map_err(|e| e.to_string())?;
         self.screen_rect = screen_rect;
         Ok(())
     }

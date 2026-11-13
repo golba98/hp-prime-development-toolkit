@@ -117,9 +117,9 @@ struct Run {
     max_depth: usize,
     #[arg(long, default_value_t = 1_000_000)]
     max_collection_len: usize,
-    #[arg(long,default_value_t=16*1024*1024)]
+    #[arg(long, default_value_t = 16 * 1024 * 1024)]
     max_string_bytes: usize,
-    #[arg(long,default_value_t=4*1024*1024)]
+    #[arg(long, default_value_t = 4 * 1024 * 1024)]
     max_output_chars: usize,
     /// Allow terminal prompts after scripted input is exhausted.
     #[arg(long)]
@@ -149,7 +149,7 @@ struct DesktopRun {
 struct Debug {
     #[command(flatten)]
     run: Run,
-    #[arg(short='b',long="break",value_parser=clap::value_parser!(usize))]
+    #[arg(short = 'b', long = "break", value_parser = clap::value_parser!(usize))]
     breakpoints: Vec<usize>,
     /// Continue to the first breakpoint instead of stopping at the first statement.
     #[arg(long = "run")]
@@ -180,7 +180,7 @@ struct Preview {
     /// Terminal cell width / height. Default 0.5 when pixel dimensions are unavailable.
     #[arg(long)]
     cell_aspect: Option<f64>,
-    #[arg(long,value_parser=["auto","truecolor","256","mono"],default_value="auto")]
+    #[arg(long, value_parser = ["auto", "truecolor", "256", "mono"], default_value = "auto")]
     color: String,
 }
 #[derive(Args)]
@@ -343,7 +343,7 @@ pub fn main() -> u8 {
                 if error.use_stderr() {
                     r.fail("invalid_request", 2, error.to_string());
                 } else {
-                    r.data = json!({"text":error.to_string()});
+                    r.data = json!({"text": error.to_string()});
                 }
                 println!("{}", serde_json::to_string(&r).expect("report JSON"));
                 return r.exit_code;
@@ -375,10 +375,22 @@ fn dispatch(cli: &Cli, cancel: &Arc<AtomicBool>) -> Report {
     let (mut request, options) = match &cli.command {
         Command::Doctor => {
             let mut r = Report::new("doctor", None);
-            r.data = json!({"platform":format!("{}-{}",std::env::consts::OS,std::env::consts::ARCH),
-                "native_engine":true,"graphics_renderer":true,"browser_viewer":cfg!(feature="web"),"desktop_viewer":cfg!(feature="desktop"),
-                "terminal":{"stdin_tty":io::stdin().is_terminal(),"stderr_tty":io::stderr().is_terminal(),"term":std::env::var("TERM").ok(),"colorterm":std::env::var("COLORTERM").ok()},
-                "upstream_revision":hpdev_core::UPSTREAM_REVISION,"firmware_required":false,"calculator_required":false});
+            r.data = json!({
+                "platform": format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+                "native_engine": true,
+                "graphics_renderer": true,
+                "browser_viewer": cfg!(feature = "web"),
+                "desktop_viewer": cfg!(feature = "desktop"),
+                "terminal": {
+                    "stdin_tty": io::stdin().is_terminal(),
+                    "stderr_tty": io::stderr().is_terminal(),
+                    "term": std::env::var("TERM").ok(),
+                    "colorterm": std::env::var("COLORTERM").ok(),
+                },
+                "upstream_revision": hpdev_core::UPSTREAM_REVISION,
+                "firmware_required": false,
+                "calculator_required": false,
+            });
             return r;
         }
         Command::Test(o) => {
@@ -529,7 +541,11 @@ fn dispatch(cli: &Cli, cancel: &Arc<AtomicBool>) -> Report {
     request.emit_frames = options.tui || options.web;
     if request.interactive && !options.web && !options.tui && !io::stdin().is_terminal() {
         let mut report = Report::new(&request.operation, Some(request.file));
-        report.fail("invalid_request",2,"--interactive requires terminal stdin; use scripted --input/--choose/--keys for automation");
+        report.fail(
+            "invalid_request",
+            2,
+            "--interactive requires terminal stdin; use scripted --input/--choose/--keys for automation",
+        );
         return report;
     }
     let mut views = match Views::new(options) {
@@ -759,7 +775,7 @@ fn watch(cli: &Cli, mut request: Request, views: &mut Views, cancel: &Arc<Atomic
     let mut report = Report::new("watch", Some(request.file));
     report.fail("cancelled", 130, "watch cancelled");
     report.duration_ms = started.elapsed().as_secs_f64() * 1000.;
-    report.data = json!({"runs":runs,"last_run":last,"viewer":views.metadata()});
+    report.data = json!({"runs": runs, "last_run": last, "viewer": views.metadata()});
     report
 }
 

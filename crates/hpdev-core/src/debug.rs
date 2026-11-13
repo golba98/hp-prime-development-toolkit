@@ -187,18 +187,18 @@ impl Debugger for Controller {
                 }
                 self.previous_values = current;
             }
-            let event = json!({"kind":"statement","location":here,"function":function,"depth":depth,
-                "stack":self.frames(machine),"observed_changes":changes});
-            let bytes = event.to_string().len();
+            let event = json!({
+                "kind": "statement",
+                "location": here,
+                "function": function,
+                "depth": depth,
+                "stack": self.frames(machine),
+                "observed_changes": changes,
+            });
             let mut capture = self.capture.borrow_mut();
-            if capture.trace.len() >= self.max_events
-                || capture.trace_bytes + bytes > 4 * 1024 * 1024
-            {
-                capture.trace_exhausted = true;
+            if !capture.record_trace(event.clone(), self.max_events) {
                 return DebugAction::Abort;
             }
-            capture.trace_bytes += bytes;
-            capture.trace.push(event.clone());
             drop(capture);
             (self.emit)(Event::Trace { event });
         }

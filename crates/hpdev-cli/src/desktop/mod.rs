@@ -669,7 +669,7 @@ impl ApplicationHandler for Desktop {
                 let mut outcome =
                     driver::execute(request, &mut views, json, quiet, &cancel, || false);
                 outcome.report.data["viewer"] =
-                    serde_json::json!({"desktop":true,"terminal":false,"browser":false});
+                    serde_json::json!({"desktop": true, "terminal": false, "browser": false});
                 if !json {
                     crate::cli::print_diagnostics(&outcome.report);
                 }

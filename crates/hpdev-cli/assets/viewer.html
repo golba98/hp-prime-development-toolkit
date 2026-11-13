@@ -1,37 +1,378 @@
 <!doctype html>
-<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>HP Prime Development Toolkit · Native display</title>
-<style>
-:root{color-scheme:dark;font:16px system-ui;background:#13171e;color:#e5eaf2}body{max-width:1050px;margin:24px auto;padding:0 20px}header{display:flex;align-items:center;gap:20px;justify-content:space-between}h1{font-size:22px;margin:0}small{color:#aab7c8}button,input,select{font:inherit;padding:9px;border:1px solid #5b708b;border-radius:5px;background:#253247;color:inherit}button{cursor:pointer}canvas{width:100%;max-height:70vh;object-fit:contain;aspect-ratio:4/3;background:white;image-rendering:pixelated;display:block;margin:20px 0;touch-action:none}#status{padding:10px 0;color:#88dcb9}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto;border-top:1px solid #384454;padding-top:16px}dialog{background:#202a38;color:inherit;border:1px solid #7187a1;border-radius:8px;max-width:min(560px,90vw);max-height:75vh;overflow:auto}dialog::backdrop{background:#0008}label{display:block;margin:14px 0}label input{display:block;width:90%;margin-top:5px}.buttons{display:flex;gap:12px;margin-top:20px}#error{color:#ffa4a4}.keys{display:flex;gap:8px;flex-wrap:wrap}
-</style>
-<header><div><h1>HP Prime Development Toolkit</h1><small>Native engine · 320 × 240 display</small></div><button id="stop">Stop program</button></header>
-<div id="status" role="status">Connecting…</div><canvas id="display" width="320" height="240" tabindex="0" aria-label="Native calculator display"></canvas>
-<div class="keys"><button data-key="7">←</button><button data-key="2">↑</button><button data-key="12">↓</button><button data-key="8">→</button><button data-key="30">Enter</button><button data-key="4">Esc</button></div>
-<p><small>Click the display to focus. Use arrow keys, Enter, Escape, digits and arithmetic keys. Tap the display for touch input. Stop interrupts execution.</small></p>
-<pre id="output" aria-label="Program output"></pre>
-<dialog id="dialog"><form id="form"><h2 id="title"></h2><p id="message"></p><p id="error" role="alert"></p><div id="fields"></div><div class="buttons"><button type="submit">OK</button><button type="button" id="reset">Reset</button><button type="button" id="cancel">Cancel</button></div></form></dialog>
-<script nonce="__NONCE__">
-const canvas=document.querySelector('#display'),ctx=canvas.getContext('2d'),status=document.querySelector('#status'),output=document.querySelector('#output'),modal=document.querySelector('#dialog'),fields=document.querySelector('#fields');
-let socket,epoch=0,activeDialog=null,finished=false;
-const send=control=>{if(socket&&socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify({epoch,control}));};
-const cancelDialog=()=>{send({kind:'dialog',response:{kind:'cancel'}});modal.close();activeDialog=null;};
-function connect(){socket=new WebSocket(location.origin.replace('http:','ws:')+'/socket'+location.search);socket.onopen=()=>{status.textContent='Running · native engine';};socket.onclose=()=>{if(!finished){status.textContent='Disconnected · reconnecting…';setTimeout(connect,500);}};socket.onmessage=message=>{const packet=JSON.parse(message.data);if(packet.epoch!==undefined)epoch=packet.epoch;const e=packet.event;
-if(e.kind==='frame'){const image=ctx.createImageData(320,240);for(let i=0;i<e.pixels.length;i++){const p=e.pixels[i],j=i*4;image.data[j]=(p>>16)&255;image.data[j+1]=(p>>8)&255;image.data[j+2]=p&255;image.data[j+3]=255;}ctx.putImageData(image,0,0);canvas.dataset.sequence=String(e.sequence);}
-if(e.kind==='output'){output.textContent+=(e.text+'\n');if(output.textContent.length>32000)output.textContent=output.textContent.slice(-32000);output.scrollTop=output.scrollHeight;}
-if(e.kind==='clear')output.textContent='';
-if(e.kind==='reset'){finished=false;status.textContent='Source changed · restarting';output.textContent='';if(modal.open)modal.close();activeDialog=null;}
-if(e.kind==='final'){finished=true;status.textContent=e.report.status+(e.report.error?' · '+e.report.error:'');output.textContent=e.report.output.join('\n');if(e.report.diagnostics.length)output.textContent+='\n'+e.report.diagnostics.map(d=>(d.location?d.location.file+':'+d.location.line+':'+d.location.column+' ':'')+d.severity+'['+d.code+']: '+d.message).join('\n');if(e.report.stack.length)output.textContent+='\n'+e.report.stack.map(f=>f.function+' at '+f.location.file+':'+f.location.line).join('\n');if(modal.open)modal.close();activeDialog=null;}
-if(e.kind==='viewer_error')status.textContent=e.message;
-if(e.kind==='dialog'){activeDialog=e.dialog;status.textContent='Waiting for input';document.querySelector('#title').textContent=activeDialog.title||activeDialog.kind;document.querySelector('#message').textContent=activeDialog.message;document.querySelector('#error').textContent=activeDialog.error||'';fields.replaceChildren();
-if(activeDialog.kind==='choose'){const select=document.createElement('select');select.name='choice';activeDialog.items.forEach((item,i)=>{const option=document.createElement('option');option.textContent=item;option.value=String(i+1);select.append(option);});select.selectedIndex=activeDialog.focus;fields.append(select);}
-else activeDialog.fields.forEach((field,i)=>{const label=document.createElement('label');label.textContent=field.label;const input=document.createElement('input');input.value=field.current;input.readOnly=activeDialog.read_only;input.title=field.help;input.name=String(i);label.append(input);fields.append(label);});
-if(!modal.open)modal.showModal();const inputs=fields.querySelectorAll('input,select');inputs[Math.min(activeDialog.focus,inputs.length-1)]?.focus();}
-};}
-document.querySelector('#form').onsubmit=event=>{event.preventDefault();if(!activeDialog)return;let response={kind:'ok'};if(activeDialog.kind==='choose')response={kind:'choice',index:Number(fields.querySelector('select').value)};else if(activeDialog.fields.length&&!activeDialog.read_only)response={kind:'entries',values:[...fields.querySelectorAll('input')].map(i=>i.value)};send({kind:'dialog',response});modal.close();activeDialog=null;status.textContent='Running';canvas.focus();};
-document.querySelector('#cancel').onclick=cancelDialog;modal.oncancel=event=>{event.preventDefault();cancelDialog();};document.querySelector('#reset').onclick=()=>{if(activeDialog)fields.querySelectorAll('input').forEach((input,i)=>{const reset=activeDialog.fields[i].reset;if(reset!==null)input.value=reset;});};document.querySelector('#stop').onclick=()=>send({kind:'cancel'});
-const keys={ArrowUp:2,Escape:4,ArrowLeft:7,ArrowRight:8,ArrowDown:12,Backspace:19,Delete:19,Enter:30,'7':32,'8':33,'9':34,'/':35,'4':37,'5':38,'6':39,'*':40,'1':42,'2':43,'3':44,'-':45,'0':47,'.':48,'+':50};
-for(const down of [true,false])canvas.addEventListener(down?'keydown':'keyup',event=>{if(keys[event.key]!==undefined){event.preventDefault();send({kind:'key',code:keys[event.key],down});}});
-document.querySelectorAll('[data-key]').forEach(button=>{for(const [event,down]of[['pointerdown',true],['pointerup',false],['pointercancel',false]])button.addEventListener(event,()=>send({kind:'key',code:Number(button.dataset.key),down}));});
-canvas.addEventListener('pointerdown',event=>{const rect=canvas.getBoundingClientRect(),scale=Math.min(rect.width/320,rect.height/240),left=rect.left+(rect.width-320*scale)/2,top=rect.top+(rect.height-240*scale)/2;const x=Math.floor((event.clientX-left)/scale),y=Math.floor((event.clientY-top)/scale);if(x>=0&&x<320&&y>=0&&y<240)send({kind:'touch',x,y});canvas.focus();});
-connect();
-</script></html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  />
+  <title>HP Prime Development Toolkit · Native display</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font: 16px system-ui;
+      background: #13171e;
+      color: #e5eaf2;
+    }
+    body {
+      max-width: 1050px;
+      margin: 24px auto;
+      padding: 0 20px;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      justify-content: space-between;
+    }
+    h1 {
+      font-size: 22px;
+      margin: 0;
+    }
+    small {
+      color: #aab7c8;
+    }
+    button,
+    input,
+    select {
+      font: inherit;
+      padding: 9px;
+      border: 1px solid #5b708b;
+      border-radius: 5px;
+      background: #253247;
+      color: inherit;
+    }
+    button {
+      cursor: pointer;
+    }
+    canvas {
+      width: 100%;
+      max-height: 70vh;
+      object-fit: contain;
+      aspect-ratio: 4/3;
+      background: white;
+      image-rendering: pixelated;
+      display: block;
+      margin: 20px 0;
+      touch-action: none;
+    }
+    #status {
+      padding: 10px 0;
+      color: #88dcb9;
+    }
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      max-height: 220px;
+      overflow: auto;
+      border-top: 1px solid #384454;
+      padding-top: 16px;
+    }
+    dialog {
+      background: #202a38;
+      color: inherit;
+      border: 1px solid #7187a1;
+      border-radius: 8px;
+      max-width: min(560px, 90vw);
+      max-height: 75vh;
+      overflow: auto;
+    }
+    dialog::backdrop {
+      background: #0008;
+    }
+    label {
+      display: block;
+      margin: 14px 0;
+    }
+    label input {
+      display: block;
+      width: 90%;
+      margin-top: 5px;
+    }
+    .buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    #error {
+      color: #ffa4a4;
+    }
+    .keys {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+  </style>
+  <header>
+    <div>
+      <h1>HP Prime Development Toolkit</h1>
+      <small>Native engine · 320 × 240 display</small>
+    </div>
+    <button id="stop">Stop program</button>
+  </header>
+  <div id="status" role="status">Connecting…</div>
+  <canvas
+    id="display"
+    width="320"
+    height="240"
+    tabindex="0"
+    aria-label="Native calculator display"
+  ></canvas>
+  <div class="keys">
+    <button data-key="7">←</button><button data-key="2">↑</button
+    ><button data-key="12">↓</button><button data-key="8">→</button
+    ><button data-key="30">Enter</button><button data-key="4">Esc</button>
+  </div>
+  <p>
+    <small
+      >Click the display to focus. Use arrow keys, Enter, Escape, digits and
+      arithmetic keys. Tap the display for touch input. Stop interrupts
+      execution.</small
+    >
+  </p>
+  <pre id="output" aria-label="Program output"></pre>
+  <dialog id="dialog">
+    <form id="form">
+      <h2 id="title"></h2>
+      <p id="message"></p>
+      <p id="error" role="alert"></p>
+      <div id="fields"></div>
+      <div class="buttons">
+        <button type="submit">OK</button
+        ><button type="button" id="reset">Reset</button
+        ><button type="button" id="cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+  <script nonce="__NONCE__">
+    const canvas = document.querySelector('#display'),
+      context = canvas.getContext('2d'),
+      status = document.querySelector('#status'),
+      output = document.querySelector('#output'),
+      modal = document.querySelector('#dialog'),
+      fields = document.querySelector('#fields');
+    let socket,
+      epoch = 0,
+      activeDialog = null,
+      finished = false;
+    const send = (control) => {
+      if (socket && socket.readyState === WebSocket.OPEN)
+        socket.send(JSON.stringify({ epoch, control }));
+    };
+    const cancelDialog = () => {
+      send({ kind: 'dialog', response: { kind: 'cancel' } });
+      modal.close();
+      activeDialog = null;
+    };
+    function connect() {
+      socket = new WebSocket(
+        location.origin.replace('http:', 'ws:') + '/socket' + location.search,
+      );
+      socket.onopen = () => {
+        status.textContent = 'Running · native engine';
+      };
+      socket.onclose = () => {
+        if (!finished) {
+          status.textContent = 'Disconnected · reconnecting…';
+          setTimeout(connect, 500);
+        }
+      };
+      socket.onmessage = (message) => {
+        const packet = JSON.parse(message.data);
+        if (packet.epoch !== undefined) epoch = packet.epoch;
+        const event = packet.event;
+        if (event.kind === 'frame') {
+          const image = context.createImageData(320, 240);
+          for (let index = 0; index < event.pixels.length; index++) {
+            const pixel = event.pixels[index];
+            const offset = index * 4;
+            image.data[offset] = (pixel >> 16) & 255;
+            image.data[offset + 1] = (pixel >> 8) & 255;
+            image.data[offset + 2] = pixel & 255;
+            image.data[offset + 3] = 255;
+          }
+          context.putImageData(image, 0, 0);
+          canvas.dataset.sequence = String(event.sequence);
+        }
+        if (event.kind === 'output') {
+          output.textContent += event.text + '\n';
+          if (output.textContent.length > 32000)
+            output.textContent = output.textContent.slice(-32000);
+          output.scrollTop = output.scrollHeight;
+        }
+        if (event.kind === 'clear') output.textContent = '';
+        if (event.kind === 'reset') {
+          finished = false;
+          status.textContent = 'Source changed · restarting';
+          output.textContent = '';
+          if (modal.open) modal.close();
+          activeDialog = null;
+        }
+        if (event.kind === 'final') {
+          finished = true;
+          status.textContent =
+            event.report.status +
+            (event.report.error ? ' · ' + event.report.error : '');
+          output.textContent = event.report.output.join('\n');
+          if (event.report.diagnostics.length)
+            output.textContent +=
+              '\n' +
+              event.report.diagnostics
+                .map(
+                  (d) =>
+                    (d.location
+                      ? d.location.file +
+                        ':' +
+                        d.location.line +
+                        ':' +
+                        d.location.column +
+                        ' '
+                      : '') +
+                    d.severity +
+                    '[' +
+                    d.code +
+                    ']: ' +
+                    d.message,
+                )
+                .join('\n');
+          if (event.report.stack.length)
+            output.textContent +=
+              '\n' +
+              event.report.stack
+                .map(
+                  (f) =>
+                    f.function +
+                    ' at ' +
+                    f.location.file +
+                    ':' +
+                    f.location.line,
+                )
+                .join('\n');
+          if (modal.open) modal.close();
+          activeDialog = null;
+        }
+        if (event.kind === 'viewer_error') status.textContent = event.message;
+        if (event.kind === 'dialog') {
+          activeDialog = event.dialog;
+          status.textContent = 'Waiting for input';
+          document.querySelector('#title').textContent =
+            activeDialog.title || activeDialog.kind;
+          document.querySelector('#message').textContent = activeDialog.message;
+          document.querySelector('#error').textContent =
+            activeDialog.error || '';
+          fields.replaceChildren();
+          if (activeDialog.kind === 'choose') {
+            const select = document.createElement('select');
+            select.name = 'choice';
+            activeDialog.items.forEach((item, i) => {
+              const option = document.createElement('option');
+              option.textContent = item;
+              option.value = String(i + 1);
+              select.append(option);
+            });
+            select.selectedIndex = activeDialog.focus;
+            fields.append(select);
+          } else
+            activeDialog.fields.forEach((field, i) => {
+              const label = document.createElement('label');
+              label.textContent = field.label;
+              const input = document.createElement('input');
+              input.value = field.current;
+              input.readOnly = activeDialog.read_only;
+              input.title = field.help;
+              input.name = String(i);
+              label.append(input);
+              fields.append(label);
+            });
+          if (!modal.open) modal.showModal();
+          const inputs = fields.querySelectorAll('input,select');
+          inputs[Math.min(activeDialog.focus, inputs.length - 1)]?.focus();
+        }
+      };
+    }
+    document.querySelector('#form').onsubmit = (event) => {
+      event.preventDefault();
+      if (!activeDialog) return;
+      let response = { kind: 'ok' };
+      if (activeDialog.kind === 'choose')
+        response = {
+          kind: 'choice',
+          index: Number(fields.querySelector('select').value),
+        };
+      else if (activeDialog.fields.length && !activeDialog.read_only)
+        response = {
+          kind: 'entries',
+          values: [...fields.querySelectorAll('input')].map((i) => i.value),
+        };
+      send({ kind: 'dialog', response });
+      modal.close();
+      activeDialog = null;
+      status.textContent = 'Running';
+      canvas.focus();
+    };
+    document.querySelector('#cancel').onclick = cancelDialog;
+    modal.oncancel = (event) => {
+      event.preventDefault();
+      cancelDialog();
+    };
+    document.querySelector('#reset').onclick = () => {
+      if (activeDialog)
+        fields.querySelectorAll('input').forEach((input, i) => {
+          const reset = activeDialog.fields[i].reset;
+          if (reset !== null) input.value = reset;
+        });
+    };
+    document.querySelector('#stop').onclick = () => send({ kind: 'cancel' });
+    const keys = {
+      ArrowUp: 2,
+      Escape: 4,
+      ArrowLeft: 7,
+      ArrowRight: 8,
+      ArrowDown: 12,
+      Backspace: 19,
+      Delete: 19,
+      Enter: 30,
+      7: 32,
+      8: 33,
+      9: 34,
+      '/': 35,
+      4: 37,
+      5: 38,
+      6: 39,
+      '*': 40,
+      1: 42,
+      2: 43,
+      3: 44,
+      '-': 45,
+      0: 47,
+      '.': 48,
+      '+': 50,
+    };
+    for (const down of [true, false])
+      canvas.addEventListener(down ? 'keydown' : 'keyup', (event) => {
+        if (keys[event.key] !== undefined) {
+          event.preventDefault();
+          send({ kind: 'key', code: keys[event.key], down });
+        }
+      });
+    document.querySelectorAll('[data-key]').forEach((button) => {
+      for (const [event, down] of [
+        ['pointerdown', true],
+        ['pointerup', false],
+        ['pointercancel', false],
+      ])
+        button.addEventListener(event, () =>
+          send({ kind: 'key', code: Number(button.dataset.key), down }),
+        );
+    });
+    canvas.addEventListener('pointerdown', (event) => {
+      const rect = canvas.getBoundingClientRect(),
+        scale = Math.min(rect.width / 320, rect.height / 240),
+        left = rect.left + (rect.width - 320 * scale) / 2,
+        top = rect.top + (rect.height - 240 * scale) / 2;
+      const x = Math.floor((event.clientX - left) / scale),
+        y = Math.floor((event.clientY - top) / scale);
+      if (x >= 0 && x < 320 && y >= 0 && y < 240) send({ kind: 'touch', x, y });
+      canvas.focus();
+    });
+    connect();
+  </script>
+</html>

@@ -28,6 +28,30 @@ pub struct Capture {
     pub dialog_bytes: usize,
 }
 
+impl Capture {
+    pub(crate) fn record_trace(&mut self, event: serde_json::Value, max_events: usize) -> bool {
+        let bytes = event.to_string().len();
+        if self.trace.len() >= max_events || self.trace_bytes + bytes > 4 * 1024 * 1024 {
+            self.trace_exhausted = true;
+            return false;
+        }
+        self.trace_bytes += bytes;
+        self.trace.push(event);
+        true
+    }
+
+    fn record_dialog(&mut self, log: String, max_output: usize) -> Result<(), RuntimeError> {
+        self.dialog_bytes = self.dialog_bytes.saturating_add(log.len());
+        if self.dialog_bytes > max_output {
+            return Err(RuntimeError::kind(ErrorKind::ResourceLimit(
+                ppl_vm::ResourceKind::Output,
+            )));
+        }
+        self.dialogs.push(log);
+        Ok(())
+    }
+}
+
 pub struct InputState {
     rx: Receiver<Control>,
     pub cancel: Arc<AtomicBool>,
@@ -161,15 +185,13 @@ impl Host for ToolkitHost {
         capture.frames += 1;
         let sequence = capture.frames;
         if self.trace {
-            let event = serde_json::json!({"kind":"presentation","sequence":sequence,"mode":if terminal.is_some(){"terminal"}else{"graphics"}});
-            if capture.trace.len() >= self.max_events
-                || capture.trace_bytes + event.to_string().len() > 4 * 1024 * 1024
-            {
-                capture.trace_exhausted = true;
+            let event = serde_json::json!({
+                "kind": "presentation",
+                "sequence": sequence,
+                "mode": if terminal.is_some() { "terminal" } else { "graphics" },
+            });
+            if !capture.record_trace(event, self.max_events) {
                 self.input.borrow().cancel.store(true, Ordering::Release);
-            } else {
-                capture.trace_bytes += event.to_string().len();
-                capture.trace.push(event);
             }
         }
         drop(capture);
@@ -262,28 +284,14 @@ impl Host for ToolkitHost {
             let dialogs = std::mem::take(&mut self.scripted.dialogs);
             let mut capture = self.capture.borrow_mut();
             for log in dialogs {
-                capture.dialog_bytes = capture.dialog_bytes.saturating_add(log.len());
-                if capture.dialog_bytes > self.max_output {
-                    return Err(RuntimeError::kind(ErrorKind::ResourceLimit(
-                        ppl_vm::ResourceKind::Output,
-                    )));
-                }
-                capture.dialogs.push(log);
+                capture.record_dialog(log, self.max_output)?;
             }
             return result;
         }
         let view = dialog_view(dialog);
-        {
-            let mut capture = self.capture.borrow_mut();
-            let log = format!("{}: {}", view.kind, view.title);
-            capture.dialog_bytes = capture.dialog_bytes.saturating_add(log.len());
-            if capture.dialog_bytes > self.max_output {
-                return Err(RuntimeError::kind(ErrorKind::ResourceLimit(
-                    ppl_vm::ResourceKind::Output,
-                )));
-            }
-            capture.dialogs.push(log);
-        }
+        self.capture
+            .borrow_mut()
+            .record_dialog(format!("{}: {}", view.kind, view.title), self.max_output)?;
         (self.emit)(Event::Dialog { dialog: view });
         loop {
             let mut input = self.input.borrow_mut();
