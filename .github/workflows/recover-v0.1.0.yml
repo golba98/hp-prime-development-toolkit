@@ -27,12 +27,12 @@ jobs:
         with:
           node-version: '24'
           package-manager-cache: false
-      - run: node --test scripts/release.test.mjs
+      - run: npm run test:release
       - id: source
         name: Require main and the exact successful dry-run source
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/recover-v0.1.0.mjs source
+        run: node scripts/release/recover-v0.1.0.mjs source
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: '13902762171'
@@ -44,7 +44,7 @@ jobs:
       - name: Verify pinned manifest, every bundle file and all six published npm integrities
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/recover-v0.1.0.mjs verify release
+        run: node scripts/release/recover-v0.1.0.mjs verify release
   smoke:
     needs: validate
     strategy:
@@ -66,7 +66,7 @@ jobs:
       - name: Verify pinned source run, original tag and artifact identity
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/recover-v0.1.0.mjs source
+        run: node scripts/release/recover-v0.1.0.mjs source
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: '13902762171'
@@ -78,9 +78,9 @@ jobs:
       - name: Verify pinned manifest, every bundle file and all six published npm integrities
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/recover-v0.1.0.mjs verify release
+        run: node scripts/release/recover-v0.1.0.mjs verify release
       - name: Install the existing public npm version and execute version, help and SQUARE
-        run: node scripts/release.mjs smoke release
+        run: node scripts/release/index.mjs smoke release
       - name: Report platform result
         if: always()
         env:
@@ -106,7 +106,7 @@ jobs:
       - name: Verify pinned source run, original tag and artifact identity
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/recover-v0.1.0.mjs source
+        run: node scripts/release/recover-v0.1.0.mjs source
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: '13902762171'
@@ -118,12 +118,12 @@ jobs:
       - name: Verify pinned manifest, every bundle file and all six published npm integrities
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/recover-v0.1.0.mjs verify release
+        run: node scripts/release/recover-v0.1.0.mjs verify release
       - name: Stage exact original archives without overwriting existing assets
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_PUBLISH: 'true'
-        run: node scripts/release.mjs stage release
+        run: node scripts/release/index.mjs stage release
   archive-smoke:
     needs: [validate, github-stage]
     strategy:
@@ -145,7 +145,7 @@ jobs:
       - name: Verify pinned source run, original tag and artifact identity
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/recover-v0.1.0.mjs source
+        run: node scripts/release/recover-v0.1.0.mjs source
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: '13902762171'
@@ -157,11 +157,11 @@ jobs:
       - name: Verify pinned manifest, every bundle file and all six published npm integrities
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/recover-v0.1.0.mjs verify release
+        run: node scripts/release/recover-v0.1.0.mjs verify release
       - name: Download, checksum and execute the actual draft archive
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/release.mjs native-smoke release
+        run: node scripts/release/index.mjs native-smoke release
       - name: Report platform result
         if: always()
         env:
@@ -187,7 +187,7 @@ jobs:
       - name: Verify pinned source run, original tag and artifact identity
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/recover-v0.1.0.mjs source
+        run: node scripts/release/recover-v0.1.0.mjs source
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: '13902762171'
@@ -199,12 +199,12 @@ jobs:
       - name: Verify pinned manifest, every bundle file and all six published npm integrities
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/recover-v0.1.0.mjs verify release
+        run: node scripts/release/recover-v0.1.0.mjs verify release
       - name: Finalize only after every npm and draft archive check succeeds
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_PUBLISH: 'true'
-        run: node scripts/release.mjs complete release
+        run: node scripts/release/index.mjs complete release
   public-verification:
     needs: [validate, github-release]
     strategy:
@@ -227,7 +227,7 @@ jobs:
       - name: Verify pinned source run, original tag and artifact identity
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/recover-v0.1.0.mjs source
+        run: node scripts/release/recover-v0.1.0.mjs source
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: '13902762171'
@@ -239,11 +239,11 @@ jobs:
       - name: Verify pinned manifest, every bundle file and all six published npm integrities
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/recover-v0.1.0.mjs verify release
+        run: node scripts/release/recover-v0.1.0.mjs verify release
       - name: Recheck public npm installation
-        run: node scripts/release.mjs smoke release
+        run: node scripts/release/index.mjs smoke release
       - name: Check unauthenticated public archive installation
-        run: node scripts/release.mjs native-smoke release
+        run: node scripts/release/index.mjs native-smoke release
       - name: Report platform result
         if: always()
         env:

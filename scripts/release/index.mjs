@@ -1,12 +1,15 @@
 // Release validation and publication. Only the explicit `publish` command writes to npm.
 import fs from 'node:fs/promises';
-import { checkPaths } from './check-docs.mjs';
+import { checkPaths } from '../check-docs.mjs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const root = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../..',
+);
 export const platforms = [
   ['x86_64-unknown-linux-gnu', 'linux', 'x64'],
   ['aarch64-unknown-linux-gnu', 'linux', 'arm64'],
@@ -833,7 +836,7 @@ async function main() {
       });
   } else
     throw new Error(
-      'Usage: node scripts/release.mjs ref|prepare [ARTIFACTS OUTPUT]|verify DIRECTORY|publish DIRECTORY|stage DIRECTORY|complete DIRECTORY|smoke DIRECTORY|native-smoke DIRECTORY',
+      'Usage: node scripts/release/index.mjs ref|prepare [ARTIFACTS OUTPUT]|verify DIRECTORY|publish DIRECTORY|stage DIRECTORY|complete DIRECTORY|smoke DIRECTORY|native-smoke DIRECTORY',
     );
 }
 

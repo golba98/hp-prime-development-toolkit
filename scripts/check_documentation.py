@@ -59,7 +59,8 @@ def sha(data):
 
 def encoded(value):
     return (
-        json.dumps(value, sort_keys=True, ensure_ascii=True, separators=(",", ":")) + "\n"
+        json.dumps(value, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+        + "\n"
     ).encode()
 
 
@@ -98,7 +99,12 @@ def safe_name(name):
 
 def private_name(name, policy):
     name = canonical(name)
-    if name.rsplit("/", 1)[-1] in {"agents.md", "agents.override.md", "claude.md", "gemini.md"}:
+    if name.rsplit("/", 1)[-1] in {
+        "agents.md",
+        "agents.override.md",
+        "claude.md",
+        "gemini.md",
+    }:
         return True
     if ".private" in name.split("/"):
         return True
@@ -115,7 +121,9 @@ def markdown(name, data=None):
     # ordinary source comments as public documentation.
     suffix = Path(name).suffix.lower()
     return (
-        data is not None and suffix in ("", ".txt") and bool(re.match(rb"\s*#{1,6} [^\n]+\n", data))
+        data is not None
+        and suffix in ("", ".txt")
+        and bool(re.match(rb"\s*#{1,6} [^\n]+\n", data))
     )
 
 
@@ -175,16 +183,20 @@ class Snapshot:
                 meta, name = row.split(b"\t", 1)
                 mode, oid, stage = meta.decode().split()
                 if stage != "0":
-                    raise ValueError("Unmerged index: resolve conflicts before publication")
+                    raise ValueError(
+                        "Unmerged index: resolve conflicts before publication"
+                    )
                 self.entries[os.fsdecode(name)] = (mode, oid)
             if not staged:
-                for name in git(root, "ls-files", "--others", "--exclude-standard", "-z").split(
-                    b"\0"
-                ):
+                for name in git(
+                    root, "ls-files", "--others", "--exclude-standard", "-z"
+                ).split(b"\0"):
                     if name:
                         self.entries[os.fsdecode(name)] = ("worktree", None)
                 self.entries = {
-                    n: e for n, e in self.entries.items() if os.path.lexists(self.root / n)
+                    n: e
+                    for n, e in self.entries.items()
+                    if os.path.lexists(self.root / n)
                 }
 
     def read(self, name):
@@ -267,7 +279,9 @@ def archive_magic(data):
     return False
 
 
-def inspect_archive(name, data, policy, errors, warnings, members=None, depth=0, budget=None):
+def inspect_archive(
+    name, data, policy, errors, warnings, members=None, depth=0, budget=None
+):
     """Inspect in memory, never extract links or filesystem members."""
     members = {} if members is None else members
     budget = [0, 0] if budget is None else budget
@@ -294,7 +308,9 @@ def inspect_archive(name, data, policy, errors, warnings, members=None, depth=0,
         if INTERNAL.search(payload.decode("utf-8", errors="replace")):
             warnings.append("Review internal-report language: " + ascii(locator))
         if archive_name(member_name) or archive_magic(payload):
-            inspect_archive(locator, payload, policy, errors, warnings, members, depth + 1, budget)
+            inspect_archive(
+                locator, payload, policy, errors, warnings, members, depth + 1, budget
+            )
 
     try:
         stream = io.BytesIO(data)
@@ -306,7 +322,8 @@ def inspect_archive(name, data, policy, errors, warnings, members=None, depth=0,
                             entry.filename, policy
                         ):
                             errors.append(
-                                "Unsafe archive directory: " + ascii(name + "!" + entry.filename)
+                                "Unsafe archive directory: "
+                                + ascii(name + "!" + entry.filename)
                             )
                         continue
                     if entry.flag_bits & 1:
@@ -322,7 +339,9 @@ def inspect_archive(name, data, policy, errors, warnings, members=None, depth=0,
             with ExitStack() as stack:
                 stream.seek(0)
                 try:
-                    container = stack.enter_context(tarfile.open(fileobj=stream, mode="r:*"))
+                    container = stack.enter_context(
+                        tarfile.open(fileobj=stream, mode="r:*")
+                    )
                 except tarfile.ReadError:
                     opener = (
                         gzip.GzipFile
@@ -356,7 +375,8 @@ def inspect_archive(name, data, policy, errors, warnings, members=None, depth=0,
                             entry.name, policy
                         ):
                             errors.append(
-                                "Unsafe archive directory: " + ascii(name + "!" + entry.name)
+                                "Unsafe archive directory: "
+                                + ascii(name + "!" + entry.name)
                             )
                         continue
                     if not entry.isfile():
@@ -381,7 +401,9 @@ def scan(snapshot, policy):
     names = {}
     for name, (_, oid) in sorted(snapshot.entries.items()):
         if snapshot.entries[name][0] == "160000":
-            warnings.append("Submodule needs its own publication policy: " + ascii(name))
+            warnings.append(
+                "Submodule needs its own publication policy: " + ascii(name)
+            )
             continue
         normalized = canonical(name)
         if not safe_name(name):
@@ -436,7 +458,9 @@ def scan(snapshot, policy):
             if not safe_name(target) or private_name(target, policy):
                 errors.append("Unsafe publication symlink: " + ascii(name))
             if markdown(name) or protected(name, policy):
-                errors.append("Documentation/policy must be regular files: " + ascii(name))
+                errors.append(
+                    "Documentation/policy must be regular files: " + ascii(name)
+                )
             continue
         if sha(data) in policy.get("private_hashes", []):
             errors.append("Private content renamed into publication: " + ascii(name))
@@ -448,7 +472,12 @@ def scan(snapshot, policy):
             except (ValueError, AttributeError):
                 errors.append("Invalid publication package metadata: " + ascii(name))
         is_doc = markdown(name, data) or disguised_doc
-        if is_doc or protected(name, policy) or archive_name(name) or archive_magic(prefix):
+        if (
+            is_doc
+            or protected(name, policy)
+            or archive_name(name)
+            or archive_magic(prefix)
+        ):
             catalog[name] = sha(data)
         if is_doc and INTERNAL.search(data.decode("utf-8", errors="replace")):
             warnings.append("Review internal-report language: " + ascii(name))
@@ -464,20 +493,29 @@ def bundle(policy, catalog):
 
 def state_path(root):
     common = Path(
-        os.fsdecode(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")).strip()
+        os.fsdecode(
+            git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")
+        ).strip()
     )
     return common / "documentation-review" / "state.json"
 
 
 def read_policy(snapshot):
     if POLICY not in snapshot.entries or snapshot.link(POLICY):
-        raise ValueError("Publication policy must be staged/tracked as a regular file: " + POLICY)
+        raise ValueError(
+            "Publication policy must be staged/tracked as a regular file: " + POLICY
+        )
     policy = json.loads(snapshot.read(POLICY))
     if policy.get("version") != 1 or not re.fullmatch(
         r"golba98/[A-Za-z0-9_.-]+", policy.get("repository", "")
     ):
         raise ValueError("Invalid documentation policy")
-    for field in ("private_paths", "protected_paths", "private_hashes", "private_git_blobs"):
+    for field in (
+        "private_paths",
+        "protected_paths",
+        "private_hashes",
+        "private_git_blobs",
+    ):
         if not isinstance(policy.get(field, []), list):
             raise TypeError("Invalid policy field: " + field)
     return policy
@@ -485,7 +523,12 @@ def read_policy(snapshot):
 
 def effective_policy(policy, trusted):
     result = dict(policy)
-    for field in ("private_paths", "protected_paths", "private_hashes", "private_git_blobs"):
+    for field in (
+        "private_paths",
+        "protected_paths",
+        "private_hashes",
+        "private_git_blobs",
+    ):
         result[field] = sorted(set(policy.get(field, [])) | set(trusted.get(field, [])))
     return result
 
@@ -503,7 +546,9 @@ def validate(snapshot, trusted_policy, accepted, approved_digests=()):
 def local_check(root, snapshot, print_result=True):
     path = state_path(root)
     if not path.is_file():
-        raise ValueError("Owner review state unavailable; prepare a proposal, do not self-approve")
+        raise ValueError(
+            "Owner review state unavailable; prepare a proposal, do not self-approve"
+        )
     state = json.loads(path.read_text())
     proposed = read_policy(snapshot)
     trusted = state["policy"]
@@ -515,11 +560,16 @@ def local_check(root, snapshot, print_result=True):
         set(trusted.get("private_paths", [])) | set(proposed.get("private_paths", []))
     )
     trusted["protected_paths"] = sorted(
-        set(trusted.get("protected_paths", [])) | set(proposed.get("protected_paths", []))
+        set(trusted.get("protected_paths", []))
+        | set(proposed.get("protected_paths", []))
     )
     for field in ("private_hashes", "private_git_blobs"):
-        trusted[field] = sorted(set(trusted.get(field, [])) | set(proposed.get(field, [])))
-    result = validate(snapshot, trusted, state["catalog"], state.get("approved_bundles", []))
+        trusted[field] = sorted(
+            set(trusted.get(field, [])) | set(proposed.get(field, []))
+        )
+    result = validate(
+        snapshot, trusted, state["catalog"], state.get("approved_bundles", [])
+    )
     if print_result:
         show(result)
     return result
@@ -562,13 +612,17 @@ def show(result):
 def propose(root, snapshot, output, revision=None):
     policy = read_policy(snapshot)
     previous = (
-        json.loads(state_path(root).read_text()) if state_path(root).exists() else {"catalog": {}}
+        json.loads(state_path(root).read_text())
+        if state_path(root).exists()
+        else {"catalog": {}}
     )
     inspection_policy = effective_policy(policy, previous.get("policy", {}))
     catalog, errors, warnings = scan(snapshot, inspection_policy)
     if errors:
         show((catalog, bundle(policy, catalog), errors, warnings))
-        raise ValueError("Resolve structural/private-content violations before owner review")
+        raise ValueError(
+            "Resolve structural/private-content violations before owner review"
+        )
     # Preparing hashes is not approval: the separate trusted state still gates
     # commits and the owner must review the full candidate bundle.
     if not revision:
@@ -585,12 +639,20 @@ def propose(root, snapshot, output, revision=None):
     for name in sorted(set(previous["catalog"]) | set(catalog)):
         if previous["catalog"].get(name) == catalog.get(name):
             continue
-        record = {"path": name, "before": previous["catalog"].get(name), "after": catalog.get(name)}
+        record = {
+            "path": name,
+            "before": previous["catalog"].get(name),
+            "after": catalog.get(name),
+        }
         if "!" not in name and name in snapshot.entries:
             record["data"] = base64.b64encode(snapshot.read(name)).decode()
         elif name.endswith("#publication"):
             record["data"] = base64.b64encode(
-                encoded(publication_fragment(snapshot.read(name.removesuffix("#publication"))))
+                encoded(
+                    publication_fragment(
+                        snapshot.read(name.removesuffix("#publication"))
+                    )
+                )
             ).decode()
         changes.append(record)
     proposal = {
@@ -613,7 +675,11 @@ def propose(root, snapshot, output, revision=None):
 
 
 def review(root, proposal_path):
-    if os.environ.get("AGENT_BOUNDARY") or not sys.stdin.isatty() or not sys.stdout.isatty():
+    if (
+        os.environ.get("AGENT_BOUNDARY")
+        or not sys.stdin.isatty()
+        or not sys.stdout.isatty()
+    ):
         raise ValueError("Owner review requires a separate interactive host terminal")
     raw = Path(proposal_path).read_bytes()
     proposal = json.loads(raw)
@@ -623,7 +689,9 @@ def review(root, proposal_path):
     snapshot = Snapshot(root, ref=revision)
     current_policy = read_policy(snapshot)
     state_file = state_path(root)
-    state = json.loads(state_file.read_text()) if state_file.exists() else {"catalog": {}}
+    state = (
+        json.loads(state_file.read_text()) if state_file.exists() else {"catalog": {}}
+    )
     inspection_policy = effective_policy(current_policy, state.get("policy", {}))
     catalog, errors, warnings = scan(snapshot, inspection_policy)
     digest = bundle(current_policy, catalog)
@@ -641,10 +709,14 @@ def review(root, proposal_path):
         if item.get("data") and not archive_name(item["path"]):
             new = base64.b64decode(item["data"]).decode("utf-8", errors="replace")
             try:
-                old = git(root, "show", "HEAD:" + item["path"]).decode("utf-8", errors="replace")
+                old = git(root, "show", "HEAD:" + item["path"]).decode(
+                    "utf-8", errors="replace"
+                )
             except ValueError:
                 old = ""
-            for line in difflib.unified_diff(old.splitlines(), new.splitlines(), lineterm=""):
+            for line in difflib.unified_diff(
+                old.splitlines(), new.splitlines(), lineterm=""
+            ):
                 print(ascii(line))
     for warning in warnings:
         print("WARNING:", warning)
@@ -660,7 +732,9 @@ def review(root, proposal_path):
     if Path(proposal_path).read_bytes() != raw or final[0] != catalog or final[1]:
         raise ValueError("Files changed during review")
     state_file.parent.mkdir(mode=0o700, exist_ok=True)
-    state["approved_bundles"] = sorted(set(state.get("approved_bundles", [])) | {digest})
+    state["approved_bundles"] = sorted(
+        set(state.get("approved_bundles", [])) | {digest}
+    )
     if not revision:
         state.update(policy=current_policy, catalog=catalog)
     state_file.write_bytes(encoded(state))
@@ -691,7 +765,9 @@ def outgoing(root, rows, remote):
         except ValueError:
             continue
     if refs and not known:
-        raise ValueError("Remote history boundary unavailable locally; fetch it before pushing")
+        raise ValueError(
+            "Remote history boundary unavailable locally; fetch it before pushing"
+        )
     commits = set()
     for row in rows:
         fields = row.split()
@@ -790,7 +866,9 @@ def install_hooks(root):
         and state.get("approved_bundles")
         and state["catalog"].get(SCRIPT) != sha(source)
     ):
-        raise ValueError("Owner must review changed checker bytes before updating trusted hooks")
+        raise ValueError(
+            "Owner must review changed checker bytes before updating trusted hooks"
+        )
     target.write_bytes(source)
     driver = """#!/usr/bin/env python3
 from pathlib import Path
@@ -809,11 +887,15 @@ raise SystemExit(result)
 """
     (folder / "hook.py").write_text(driver)
     hooks = Path(
-        git(root, "rev-parse", "--path-format=absolute", "--git-path", "hooks").decode().strip()
+        git(root, "rev-parse", "--path-format=absolute", "--git-path", "hooks")
+        .decode()
+        .strip()
     )
     common = folder.parent
     if not hooks.is_relative_to(common) and not hooks.is_relative_to(Path(root)):
-        raise ValueError("Shared external hooks directory preserved; integrate this guard manually")
+        raise ValueError(
+            "Shared external hooks directory preserved; integrate this guard manually"
+        )
     hooks.mkdir(parents=True, exist_ok=True)
     marker = "# documentation-publication-hook-v1"
     bodies = {}
@@ -894,7 +976,9 @@ def ci(root, number):
     comments = []
     for page in range(1, 101):
         chunk = api(
-            repository, "/issues/" + str(number) + "/comments?per_page=100&page=" + str(page), token
+            repository,
+            "/issues/" + str(number) + "/comments?per_page=100&page=" + str(page),
+            token,
         )
         comments.extend(chunk)
         if len(chunk) < 100:
@@ -902,13 +986,17 @@ def ci(root, number):
     else:
         raise ValueError("Comment pagination limit; review manually")
     if owner_comment(comments, metadata["owner"]["id"], head, digest):
-        catalog, digest, errors, warnings = validate(candidate, trusted_policy, accepted, [digest])
+        catalog, digest, errors, warnings = validate(
+            candidate, trusted_policy, accepted, [digest]
+        )
     for revision in git(root, "rev-list", head, "^" + base).decode().splitlines():
         if revision == head:
             continue
         result = validate(Snapshot(root, ref=revision), trusted_policy, accepted)
         if owner_comment(comments, metadata["owner"]["id"], revision, result[1]):
-            result = validate(Snapshot(root, ref=revision), trusted_policy, accepted, [result[1]])
+            result = validate(
+                Snapshot(root, ref=revision), trusted_policy, accepted, [result[1]]
+            )
         if result[2]:
             errors.append("Unreviewed or unsafe intermediate PR commit: " + revision)
             print("Intermediate approval command: /docs-approve", revision, result[1])
@@ -971,12 +1059,17 @@ def main():
     snapshot = Snapshot(root, ref=args.revision, staged=args.staged)
     if args.propose:
         revision = (
-            git(root, "rev-parse", args.proposal_revision + "^{commit}").decode().strip()
+            git(root, "rev-parse", args.proposal_revision + "^{commit}")
+            .decode()
+            .strip()
             if args.proposal_revision
             else None
         )
         propose(
-            root, Snapshot(root, ref=revision) if revision else snapshot, args.propose, revision
+            root,
+            Snapshot(root, ref=revision) if revision else snapshot,
+            args.propose,
+            revision,
         )
         return 0
     if args.artifact:
@@ -985,7 +1078,9 @@ def main():
         errors, warnings = [], []
         if path.stat().st_size > MAX_FILE:
             raise ValueError("Artifact exceeds inspection limit")
-        members = inspect_archive(path.name, path.read_bytes(), state["policy"], errors, warnings)
+        members = inspect_archive(
+            path.name, path.read_bytes(), state["policy"], errors, warnings
+        )
         approved = set(state["catalog"].values())
         for name, digest in members.items():
             if digest not in approved:

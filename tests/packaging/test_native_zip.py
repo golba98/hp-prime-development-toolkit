@@ -9,7 +9,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-helper = Path(__file__).with_name("native_zip.py")
+helper = Path(__file__).resolve().parents[2] / "scripts/release/native_zip.py"
 spec = importlib.util.spec_from_file_location("native_zip", helper)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)

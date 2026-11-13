@@ -29,14 +29,14 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-      - run: '"$PYTHON" scripts/ci_capture.py test-results/ci/rust.log -- cargo test --locked --workspace'
+      - run: '"$PYTHON" scripts/ci/capture.py test-results/ci/rust.log -- cargo test --locked --workspace'
       - run: cargo build --locked --bin hpdev
       - name: Actual native desktop tests
         run: |
           "$PYTHON" -B - <<'PY'
           import os, subprocess, sys
           binary='target/debug/hpdev'+('.exe' if os.name=='nt' else '')
-          sys.exit(subprocess.call([sys.executable,'-B','scripts/native_gui/run.py','--binary',binary,'--artifacts','test-results/native']))
+          sys.exit(subprocess.call([sys.executable,'-B','tests/desktop/run.py','--binary',binary,'--artifacts','test-results/native']))
           PY
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()

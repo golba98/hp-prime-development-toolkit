@@ -27,15 +27,17 @@
     "scripts/check-docs.mjs",
     "scripts/install-hooks.mjs",
     "tools/stage-workspace.py",
-    "scripts/package.mjs"
+    "scripts/package.mjs",
+    "scripts/release/package.mjs",
+    "scripts/release/project-files.mjs"
   ],
   "public_markdown": {
     "README.md": "9ad58ed5f9b2d2470ade408c9a88f64b5857e988cc67705067193c50f29b0560",
     "THIRD_PARTY_NOTICES.md": "508057466d63deec10c50e2bbec9bc71ed5f969974e0ca55ffe3b6d81187dd3d",
-    "docs/architecture.md": "e9121e0d2c5e04bd3c602b640b6cc60ffb7dafc79b79b879bb6c9ccb9de52b60",
+    "docs/architecture.md": "c28d6f1eba37d17ac44840f790bb6e1522b03094c30a16cab9d0d39271c580cb",
     "docs/json-api.md": "91b1a87d28bdbb4f29ecb5b082a4c7939327876e04d3543b5a414bbd9be8b76e",
-    "docs/packaging.md": "7b28c801563832dab353f8b06abf8806dde427264a37547edd312c2f30d47637",
-    "docs/testing.md": "16aa550ef9c55baab7ed7f900bfc5d4b32bf7418ba4b4a8c7fbb7a0695624c22",
+    "docs/packaging.md": "6564d108fca9e449acac50f9129a6ae62739632fbcda80a57d858ebac38401ca",
+    "docs/testing.md": "62677c11ae80d83dfd734509e76c7dff73eea193648e68d27a52d3617d1e71c2",
     "tests/fixtures/README.md": "56ec9349fa2d9dfbe3380c832f9dbad4efadd7b5c0d6f71f3f97afd9c8e44b2a"
   },
   "repository": "golba98/hp-prime-development-toolkit",

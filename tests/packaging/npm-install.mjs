@@ -4,8 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { platforms } from './release.mjs';
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+import { platforms } from '../../scripts/release/index.mjs';
+const root = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../..',
+);
 const option = (name, fallback) => {
   const i = process.argv.indexOf(name);
   return i < 0 ? fallback : process.argv[i + 1];
@@ -40,7 +43,7 @@ try {
     execFileSync(
       process.execPath,
       [
-        path.join(root, 'scripts/package.mjs'),
+        path.join(root, 'scripts/release/package.mjs'),
         '--target',
         target,
         '--binary',

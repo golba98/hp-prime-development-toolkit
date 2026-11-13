@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "test:npm": "node scripts/test-npm.mjs",
-    "test:browser": "playwright test",
+    "test:npm": "node tests/packaging/npm-install.mjs",
+    "test:release": "node --test tests/packaging/release.test.mjs tests/packaging/project-files.test.mjs",
+    "test:browser": "playwright test --config tests/browser/playwright.config.mjs",
     "check:docs": "node scripts/check-docs.mjs && python3 scripts/check_documentation.py",
     "test:docs": "node --test scripts/check-docs.test.mjs",
     "hooks:install": "node scripts/install-hooks.mjs"

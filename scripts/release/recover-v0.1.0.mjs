@@ -9,7 +9,7 @@ import {
   verifySourceRun,
   verifyPublishedBundle,
   legacyPlatforms as platforms,
-} from './release.mjs';
+} from './index.mjs';
 
 export const recovery = Object.freeze({
   repository: 'golba98/hp-prime-development-toolkit',
@@ -117,7 +117,7 @@ if (
   const [command, directory = 'release'] = process.argv.slice(2);
   ensure(
     ['source', 'verify'].includes(command),
-    'Usage: node scripts/recover-v0.1.0.mjs source|verify [DIRECTORY]',
+    'Usage: node scripts/release/recover-v0.1.0.mjs source|verify [DIRECTORY]',
   );
   await verifyRecoverySource();
   if (command === 'verify') await verifyRecoveryBundle(path.resolve(directory));

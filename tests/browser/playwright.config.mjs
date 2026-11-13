@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 export default defineConfig({
-  testDir: 'web-tests',
+  testDir: '.',
+  outputDir: '../../test-results',
   timeout: 20000,
   workers: 1,
   use: {
@@ -10,5 +11,8 @@ export default defineConfig({
       executablePath: process.env.HPDEV_CHROMIUM_EXECUTABLE || undefined,
     },
   },
-  reporter: 'list',
+  reporter: [
+    ['list'],
+    ['junit', { outputFile: '../../test-results/browser-results.xml' }],
+  ],
 });

@@ -62,7 +62,7 @@ def main():
                 [
                     sys.executable,
                     "-B",
-                    str(root / "scripts/native_gui/test_native.py"),
+                    str(root / "tests/desktop/test_native.py"),
                     "--binary",
                     str(binary),
                     "--artifacts",

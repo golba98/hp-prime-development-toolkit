@@ -15,7 +15,7 @@ import {
   inspectPackage,
   inspectNative,
   nativeArchiveName,
-} from './release.mjs';
+} from './index.mjs';
 
 const registry = 'https://registry.npmjs.org';
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -298,6 +298,8 @@ if (
 ) {
   const [command, directory, target] = process.argv.slice(2);
   if (command !== 'local')
-    throw new Error('Usage: node scripts/verify-install.mjs local DIST TARGET');
+    throw new Error(
+      'Usage: node scripts/release/verify-install.mjs local DIST TARGET',
+    );
   await verifyLocalNative(path.resolve(directory), target);
 }

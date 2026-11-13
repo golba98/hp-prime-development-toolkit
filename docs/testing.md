@@ -93,7 +93,7 @@ Wayland, Windows or macOS.
 Build the CLI, then run the shared suite in a dedicated logged-in desktop session:
 
 ```sh
-python3 -B scripts/native_gui/run.py --binary target/debug/hpdev --artifacts test-results/native
+python3 -B tests/desktop/run.py --binary target/debug/hpdev --artifacts test-results/native
 ```
 
 On Windows use `python` and `target/debug/hpdev.exe`. The driver uses Win32
@@ -124,7 +124,7 @@ Select its JSON runner labels and Python executable; it executes the same suite
 and uploads the real environment/result. No native session result should be
 claimed before that workflow actually runs.
 
-`python3 -B scripts/test_native_zip.py` tests Windows ZIP round trips, Unicode
+`python3 -B tests/packaging/test_native_zip.py` tests Windows ZIP round trips, Unicode
 names, traversal, symlink and case-collision rejection. The packaging job
 inspects actual executable linkage and then tests extracted CLI/JSON operation
 outside the checkout. Linux retains its original Rust/XTest suite as well.
