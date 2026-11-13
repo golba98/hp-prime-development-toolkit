@@ -210,7 +210,11 @@ impl Views {
         }
     }
     pub fn metadata(&self) -> Value {
-        let data = json!({"terminal":self.options.tui,"browser":self.options.web,"desktop":self.options.desktop});
+        let data = json!({
+            "terminal": self.options.tui,
+            "browser": self.options.web,
+            "desktop": self.options.desktop,
+        });
         #[cfg(feature = "web")]
         {
             let mut data = data;

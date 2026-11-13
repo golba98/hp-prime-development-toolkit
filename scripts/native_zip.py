@@ -1,12 +1,14 @@
 """Windows ZIP handling for release preparation/validation (Python stdlib only)."""
+
 import json
 import os
-from pathlib import Path, PurePosixPath
 import stat
 import sys
 import zipfile
+from pathlib import Path
 
 MAX_MEMBER = 128 * 1024 * 1024
+
 
 def members(archive):
     seen = set()
@@ -17,19 +19,28 @@ def members(archive):
         # Validate the original archive bytes before accepting that normalization.
         name = item.orig_filename
         total += item.file_size
-        if total > 512*1024*1024 or len(result)>100000:
+        if total > 512 * 1024 * 1024 or len(result) > 100000:
             raise ValueError("ZIP exceeds distribution size/member limits")
-        parts = PurePosixPath(name.rstrip("/")).parts
-        if (not name or name != item.filename or "\\" in name or ":" in name or name.startswith("/")
-                or any(p in ("", ".", "..") for p in name.rstrip("/").split("/"))
-                or name.rstrip("/").casefold() in seen or item.file_size > MAX_MEMBER):
+        if (
+            not name
+            or name != item.filename
+            or "\\" in name
+            or ":" in name
+            or name.startswith("/")
+            or any(p in ("", ".", "..") for p in name.rstrip("/").split("/"))
+            or name.rstrip("/").casefold() in seen
+            or item.file_size > MAX_MEMBER
+        ):
             raise ValueError("Unsafe, duplicate or oversized ZIP member: " + repr(name))
         seen.add(name.rstrip("/").casefold())
         mode = item.external_attr >> 16
-        if stat.S_ISLNK(mode) or (stat.S_IFMT(mode) not in (0, stat.S_IFREG, stat.S_IFDIR)):
+        if stat.S_ISLNK(mode) or (
+            stat.S_IFMT(mode) not in (0, stat.S_IFREG, stat.S_IFDIR)
+        ):
             raise ValueError("ZIP links and special files are forbidden")
         result.append({"name": name, "directory": item.is_dir(), "mode": mode & 0o777})
     return result
+
 
 def main():
     operation, file, *args = sys.argv[1:]
@@ -39,7 +50,9 @@ def main():
             for path in [source, *sorted(source.rglob("*"))]:
                 if path.is_symlink() or not (path.is_file() or path.is_dir()):
                     raise ValueError("Only ordinary files/directories may be packaged")
-                archive.write(path, (Path(source.name) / path.relative_to(source)).as_posix())
+                archive.write(
+                    path, (Path(source.name) / path.relative_to(source)).as_posix()
+                )
         return
     with zipfile.ZipFile(file) as archive:
         listing = members(archive)
@@ -52,7 +65,9 @@ def main():
             for row in listing:
                 path = destination / row["name"]
                 # Refuse traversal through existing links, including destination.
-                if destination.is_symlink() or any(p.is_symlink() for p in path.parents):
+                if destination.is_symlink() or any(
+                    p.is_symlink() for p in path.parents
+                ):
                     raise ValueError("Extraction path contains a symlink")
                 if row["directory"]:
                     path.mkdir(parents=True, exist_ok=True)
@@ -63,6 +78,7 @@ def main():
                         path.chmod(row["mode"] or 0o644)
         else:
             raise ValueError("Unknown ZIP operation")
+
 
 if __name__ == "__main__":
     main()

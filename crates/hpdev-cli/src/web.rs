@@ -126,7 +126,7 @@ impl BrowserViewer {
     }
     pub fn apply(&self, event: &Event) {
         let message = Arc::new(
-            json!({"epoch":self.shared.epoch.load(Ordering::Acquire),"event":event}).to_string(),
+            json!({"epoch": self.shared.epoch.load(Ordering::Acquire), "event": event}).to_string(),
         );
         let mut replay = self.shared.replay.lock().unwrap();
         match event {
@@ -169,7 +169,7 @@ impl BrowserViewer {
         *self.shared.replay.lock().unwrap() = Replay::default();
         for _ in self.commands.try_iter() {}
         let _ = self.shared.events.send(Arc::new(
-            json!({"epoch":epoch,"event":{"kind":"reset"}}).to_string(),
+            json!({"epoch": epoch, "event": {"kind": "reset"}}).to_string(),
         ));
     }
 }
@@ -209,7 +209,17 @@ async fn index(
     let mut response =
         Html(include_str!("../assets/viewer.html").replace("__NONCE__", &shared.token))
             .into_response();
-    response.headers_mut().insert("content-security-policy",HeaderValue::from_str(&format!("default-src 'none'; script-src 'nonce-{}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",shared.token)).expect("hex nonce"));
+    let content_security_policy = format!(
+        concat!(
+            "default-src 'none'; script-src 'nonce-{}'; style-src 'unsafe-inline'; ",
+            "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+        ),
+        shared.token,
+    );
+    response.headers_mut().insert(
+        "content-security-policy",
+        HeaderValue::from_str(&content_security_policy).expect("hex nonce"),
+    );
     response
         .headers_mut()
         .insert("cache-control", HeaderValue::from_static("no-store"));
@@ -263,10 +273,17 @@ async fn session(mut socket: WebSocket, shared: Arc<Shared>) {
             event = events.recv() => {
                 match event {
                     Ok(message) => {
-                        if !deliver(&mut socket, message.as_str().to_owned()).await { break; }
+                        if !deliver(&mut socket, message.as_str().to_owned()).await {
+                            break;
+                        }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {
-                        let message = json!({"event":{"kind":"viewer_error","message":"viewer fell behind; reconnect to resynchronize"}});
+                        let message = json!({
+                            "event": {
+                                "kind": "viewer_error",
+                                "message": "viewer fell behind; reconnect to resynchronize",
+                            },
+                        });
                         let _ = deliver(&mut socket, message.to_string()).await;
                         break;
                     }
@@ -276,15 +293,29 @@ async fn session(mut socket: WebSocket, shared: Arc<Shared>) {
             incoming = socket.recv() => {
                 match incoming {
                     Some(Ok(Message::Text(text))) => {
-                        let Ok(value) = serde_json::from_str::<serde_json::Value>(text.as_str()) else { continue };
-                        if value["epoch"].as_u64() != Some(shared.epoch.load(Ordering::Acquire)) { continue; }
-                        let Ok(command) = serde_json::from_value::<Control>(value["control"].clone()) else { continue };
+                        let Ok(value) = serde_json::from_str::<serde_json::Value>(text.as_str()) else {
+                            continue;
+                        };
+                        if value["epoch"].as_u64() != Some(shared.epoch.load(Ordering::Acquire)) {
+                            continue;
+                        }
+                        let Ok(command) = serde_json::from_value::<Control>(value["control"].clone()) else {
+                            continue;
+                        };
                         // A browser never controls the debugger or loads a file.
-                        if matches!(command, Control::Debug { .. }) { continue; }
-                        if matches!(command, Control::Dialog { .. }) { shared.replay.lock().unwrap().dialog = None; }
+                        if matches!(command, Control::Debug { .. }) {
+                            continue;
+                        }
+                        if matches!(command, Control::Dialog { .. }) {
+                            shared.replay.lock().unwrap().dialog = None;
+                        }
                         if shared.controls.try_send(command).is_err() {
-                            let message = json!({"event":{"kind":"viewer_error","message":"input queue full"}});
-                            if !deliver(&mut socket, message.to_string()).await { break; }
+                            let message = json!({
+                                "event": {"kind": "viewer_error", "message": "input queue full"},
+                            });
+                            if !deliver(&mut socket, message.to_string()).await {
+                                break;
+                            }
                         }
                     }
                     Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
@@ -292,7 +323,9 @@ async fn session(mut socket: WebSocket, shared: Arc<Shared>) {
                 }
             }
             _ = tick.tick() => {
-                if shared.closed.load(Ordering::Acquire) { break; }
+                if shared.closed.load(Ordering::Acquire) {
+                    break;
+                }
             }
         }
     }
