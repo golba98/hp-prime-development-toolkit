@@ -8,7 +8,7 @@ import { collectLicenses } from './licenses.mjs';
 import { checkPaths, policy } from './check-docs.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 // Validate documentation inputs before assembling public packages.
-execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), [path.join(root, 'scripts/check_documentation.py'), '--root', root, '--package-source'], {stdio: 'inherit'});
+execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), [path.join(root, 'scripts/check_documentation.py'), '--root', root, '--package-source'], {stdio: ['ignore', 2, 2]});
 const tracked = new Set(execFileSync('git', ['ls-files', '-z'], {cwd: root, encoding: 'utf8'}).split('\0').filter(Boolean));
 const approved = new Set([...tracked, ...Object.keys(policy.publicMarkdown)]);
 const copyOptions = {recursive: true, filter: async source => {
