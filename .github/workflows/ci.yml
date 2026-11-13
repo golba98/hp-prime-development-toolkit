@@ -1,6 +1,7 @@
 name: Toolkit checks and artifacts
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
   workflow_call:
@@ -51,25 +52,27 @@ jobs:
           package-manager-cache: false
       - run: npm install --global npm@11.21.0 --ignore-scripts
       - run: cargo fmt --all -- --check
-      - run: npm run test:docs
-      - run: node --test scripts/release.test.mjs
-      - run: ${{ env.PYTHON }} -B scripts/test_native_zip.py
+      - run: ${{ env.PYTHON }} scripts/ci/capture.py test-results/ci/docs-tests.log -- node --test scripts/check-docs.test.mjs
+      - run: ${{ env.PYTHON }} scripts/ci/capture.py test-results/ci/release-tests.log -- node --test tests/packaging/release.test.mjs tests/packaging/project-files.test.mjs
+      - run: ${{ env.PYTHON }} scripts/ci/capture.py test-results/ci/zip-tests.log -- ${{ env.PYTHON }} -B tests/packaging/test_native_zip.py
       - run: cargo clippy --locked --workspace --all-targets --target ${{ matrix.target }} -- -D warnings
       - name: Rust unit, CLI, headless and JSON regressions
         shell: bash
-        run: ${{ env.PYTHON }} scripts/ci_capture.py test-results/ci/rust-tests.log -- cargo test --locked --workspace --target ${{ matrix.target }}
+        run: ${{ env.PYTHON }} scripts/ci/capture.py test-results/ci/rust-tests.log -- cargo test --locked --workspace --target ${{ matrix.target }}
       - run: cargo clippy --locked --workspace --all-targets --target ${{ matrix.target }} --no-default-features -- -D warnings
       - run: cargo build --locked --release --target ${{ matrix.target }} --bin hpdev
+      - name: Initialize documented fresh-clone publication guards
+        run: ${{ env.PYTHON }} scripts/check_documentation.py --install-hooks
       - run: npm run check:docs
       - name: Inspect architecture, runtime dependencies and platform manifest
         shell: bash
-        run: ${{ env.PYTHON }} scripts/inspect_native.py --target ${{ matrix.target }} --binary target/${{ matrix.target }}/release/${{ matrix.executable }} --output test-results/ci/binary-linkage.json
+        run: ${{ env.PYTHON }} scripts/release/inspect_native.py --target ${{ matrix.target }} --binary target/${{ matrix.target }}/release/${{ matrix.executable }} --output test-results/ci/binary-linkage.json
       - name: Isolated offline npm installation
-        run: node scripts/test-npm.mjs --target ${{ matrix.target }} --binary target/${{ matrix.target }}/release/${{ matrix.executable }}
+        run: ${{ env.PYTHON }} scripts/ci/capture.py test-results/ci/npm-install-tests.log -- node tests/packaging/npm-install.mjs --target ${{ matrix.target }} --binary target/${{ matrix.target }}/release/${{ matrix.executable }}
       - name: Assemble native and npm artifacts (no publication)
-        run: node scripts/package.mjs --target ${{ matrix.target }} --binary target/${{ matrix.target }}/release/${{ matrix.executable }}
+        run: node scripts/release/package.mjs --target ${{ matrix.target }} --binary target/${{ matrix.target }}/release/${{ matrix.executable }}
       - name: Execute the standalone archive without Node or Rust on PATH
-        run: node scripts/verify-install.mjs local dist ${{ matrix.target }}
+        run: ${{ env.PYTHON }} scripts/ci/capture.py test-results/ci/standalone-install-tests.log -- node scripts/release/verify-install.mjs local dist ${{ matrix.target }}
       - name: Report native platform result
         if: always()
         env:
@@ -154,19 +157,19 @@ jobs:
       - run: cargo build --locked --target ${{ matrix.target }} --bin hpdev
       - name: Existing Linux native integration
         if: runner.os == 'Linux'
-        run: xvfb-run -a -s "-screen 0 1800x1400x24" cargo test --locked -p hpdev-cli --test desktop -- --ignored --test-threads=1
+        run: python3 scripts/ci/capture.py test-results/native/rust-desktop-tests.log -- xvfb-run -a -s "-screen 0 1800x1400x24" cargo test --locked -p hpdev-cli --test desktop -- --ignored --test-threads=1
       - name: Native launch, OS input, pixels, BST and debugger (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a -s "-screen 0 1800x1400x24" python3 -B scripts/native_gui/run.py --binary target/${{ matrix.target }}/debug/${{ matrix.executable }} --artifacts test-results/native
+        run: xvfb-run -a -s "-screen 0 1800x1400x24" python3 -B tests/desktop/run.py --binary target/${{ matrix.target }}/debug/${{ matrix.executable }} --artifacts test-results/native
       - name: High-DPI native X11 interaction
         if: runner.os == 'Linux'
         env:
           WINIT_X11_SCALE_FACTOR: '2'
-        run: xvfb-run -a -s "-screen 0 3000x2400x24" python3 -B scripts/native_gui/run.py --binary target/${{ matrix.target }}/debug/${{ matrix.executable }} --artifacts test-results/native/high-dpi
+        run: xvfb-run -a -s "-screen 0 3000x2400x24" python3 -B tests/desktop/run.py --binary target/${{ matrix.target }}/debug/${{ matrix.executable }} --artifacts test-results/native/high-dpi
       - name: Native launch, OS input, pixels, BST and debugger (Windows/macOS)
         if: runner.os != 'Linux'
         shell: bash
-        run: ${{ env.PYTHON }} -B scripts/native_gui/run.py --binary target/${{ matrix.target }}/debug/${{ matrix.executable }} --artifacts test-results/native
+        run: ${{ env.PYTHON }} -B tests/desktop/run.py --binary target/${{ matrix.target }}/debug/${{ matrix.executable }} --artifacts test-results/native
       - name: Report real OS evidence
         if: always()
         shell: bash
@@ -207,8 +210,16 @@ jobs:
           targets: ${{ matrix.target }}
       - name: Rust unit, CLI, headless and JSON regressions
         shell: bash
-        run: ${{ env.PYTHON }} scripts/ci_capture.py test-results/ci/rust-tests.log -- cargo test --locked --workspace --target ${{ matrix.target }} --no-default-features --features web
+        run: ${{ env.PYTHON }} scripts/ci/capture.py test-results/ci/rust-tests.log -- cargo test --locked --workspace --target ${{ matrix.target }} --no-default-features --features web
       - run: cargo build --locked --release --target ${{ matrix.target }} --no-default-features --features web --bin hpdev
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: musl-logs-${{ matrix.target }}
+          path: |
+            test-results/ci/
+            !test-results/**/.private/**
+          if-no-files-found: ignore
   distribution:
     needs: [native, browser, desktop, musl]
     runs-on: ubuntu-24.04
@@ -228,7 +239,7 @@ jobs:
       - name: Validate the complete distribution without publishing
         env:
           RELEASE_SHA: ${{ inputs.ref || github.sha }}
-        run: node scripts/release.mjs prepare artifacts dist/validated-release
+        run: node scripts/release/index.mjs prepare artifacts dist/validated-release
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: validated-distribution

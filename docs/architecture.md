@@ -1,5 +1,34 @@
 # Architecture and development
 
+## Repository layout
+
+The root contains the Cargo workspace and Node development manifests, the default
+`hpdev.toml` example suite, project entry documentation and licence notices.
+Keep generated builds, installed dependencies and test output in the existing
+ignored `target/`, `dist/`, `node_modules/` and `test-results/` directories.
+
+| Location | Contents |
+| --- | --- |
+| `crates/hpdev-core/` | Native execution library and Rust integration tests |
+| `crates/hpdev-cli/` | CLI, native/terminal/browser frontends and their Rust tests |
+| `crates/hpdev-cli/assets/` | Browser viewer and embedded Windows manifest |
+| `npm/` | Distributable Node launcher and package metadata |
+| `examples/` | Runnable PPL programs |
+| `tests/browser/` | Playwright configuration and browser interaction tests |
+| `tests/desktop/` | Native OS interaction drivers and acceptance runner |
+| `tests/packaging/` | Release, ZIP and offline installation tests; pinned release fixture |
+| `tests/fixtures/`, `tests/snapshots/` | Shared program fixtures, provenance and image references |
+| `scripts/release/` | Packaging, licence collection, verification and release entry point (`index.mjs`) |
+| `scripts/ci/` | CI command-output capture utility |
+| `scripts/` | Stable documentation/publication guard entry points, policy and guard tests |
+| `docs/` | User/contributor guides, report schema and dependency licences |
+
+Run development commands from the repository root. Rust tests stay alongside
+their owning crates. Browser, desktop and packaging suites share `tests/`;
+distributed examples retain only the program fixtures and snapshots they need.
+
+## Execution and presentation
+
 `hpdev-cli` owns Clap commands, supervised worker processes, Ratatui/Crossterm
 presentation, a default native Winit/Softbuffer desktop viewer, and the optional Axum browser viewer. `hpdev-core` owns request
 and report types, compiler/VM orchestration, host adaptation, debugger controls

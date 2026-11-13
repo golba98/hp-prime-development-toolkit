@@ -96,7 +96,7 @@ cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace
 cargo clippy --locked --workspace --all-targets --no-default-features -- -D warnings
-node --test scripts/release.test.mjs
+npm run test:release
 npm ci --ignore-scripts
 npx playwright install chromium
 npm run test:browser
@@ -108,9 +108,9 @@ A local Linux x64 release-artifact check is:
 rustup target add x86_64-unknown-linux-gnu
 cargo test --locked --workspace --target x86_64-unknown-linux-gnu
 cargo build --locked --release --target x86_64-unknown-linux-gnu --bin hpdev
-node scripts/test-npm.mjs --target x86_64-unknown-linux-gnu --binary target/x86_64-unknown-linux-gnu/release/hpdev
-node scripts/package.mjs --target x86_64-unknown-linux-gnu --binary target/x86_64-unknown-linux-gnu/release/hpdev
-node scripts/verify-install.mjs local dist x86_64-unknown-linux-gnu
+node tests/packaging/npm-install.mjs --target x86_64-unknown-linux-gnu --binary target/x86_64-unknown-linux-gnu/release/hpdev
+node scripts/release/package.mjs --target x86_64-unknown-linux-gnu --binary target/x86_64-unknown-linux-gnu/release/hpdev
+node scripts/release/verify-install.mjs local dist x86_64-unknown-linux-gnu
 ```
 
 Use the corresponding target and executable on other systems. The offline npm
@@ -244,7 +244,7 @@ release finalization.
 
    ```sh
    export RELEASE_SHA="$(git rev-parse 'v0.1.0^{commit}')"
-   node scripts/release.mjs verify /absolute/path/to/bundle
+   node scripts/release/index.mjs verify /absolute/path/to/bundle
    ```
 
 4. After explicit approval for npm bootstrap, use `npm login` interactively and
@@ -311,7 +311,7 @@ Its immutable recovery pins are:
 | Original artifact ZIP SHA-256 | `f6d720f123433a450f1e3d53fd74fc1b78207d663cb8329a2bf9f39edfb9bfd1` |
 | Original manifest SHA-256 | `00452ea100e849ac7f74f7841d10c7aba717aac77cf030d51c1b97822af64c17` |
 
-The manifest fixture in `scripts/fixtures/v0.1.0-release-manifest.json` records
+The manifest fixture in `tests/packaging/fixtures/v0.1.0-release-manifest.json` records
 the original manifest bytes for review and regression testing. The recovery
 checks the API run, attempt, artifact ID/digest/expiry and remote annotated tag
 before downloading that artifact by ID from the original run. It then checks
@@ -436,7 +436,7 @@ this policy does not erase prior exposure or authorize changes to old releases.
 Windows archives contain a native x86-64 `hpdev.exe`, the examples, notices and
 documentation. The executable embeds the Windows 10 compatibility,
 per-monitor-v2 DPI and asInvoker settings; administrator elevation is not requested.
-The MSVC runtime is linked statically, and `scripts/inspect_native.py` rejects
+The MSVC runtime is linked statically, and `scripts/release/inspect_native.py` rejects
 unexpected redistributable DLL dependencies. Invoking hpdev in PowerShell keeps
 CLI logging and waits; private VM processes do not allocate another console.
 
@@ -447,7 +447,7 @@ or notarization step and no signing credential is assumed. Gatekeeper handling
 for verified downloads is described in the README. A system-generated/ad-hoc
 signature is not Developer ID distribution signing or notarization.
 
-`scripts/native_zip.py` creates and validates Windows archives using Python's
+`scripts/release/native_zip.py` creates and validates Windows archives using Python's
 standard library during preparation/CI. End users can extract them with Explorer
 or PowerShell and need neither Python nor Rust to run hpdev.
 The existing checksums, exact bundle membership, pinned recovery manifest,

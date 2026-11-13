@@ -21,16 +21,16 @@ import {
   githubRelease,
   validateMetadata,
   validateRef,
-} from './release.mjs';
+} from '../../scripts/release/index.mjs';
 import {
   recovery,
   validateRecoveryContext,
   verifyRecoverySource,
   verifyRecoveryManifest,
   verifyRecoveryBundle,
-} from './recover-v0.1.0.mjs';
+} from '../../scripts/release/recover-v0.1.0.mjs';
 
-const root = path.resolve(import.meta.dirname, '..');
+const root = path.resolve(import.meta.dirname, '../..');
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 async function temporary(t) {
   const directory = await fs.mkdtemp(
@@ -52,7 +52,7 @@ function archive(directory, name, file) {
       process.env.PYTHON ||
         (process.platform === 'win32' ? 'python' : 'python3'),
       [
-        path.join(root, 'scripts/native_zip.py'),
+        path.join(root, 'scripts/release/native_zip.py'),
         'create',
         file,
         path.join(directory, name),
@@ -251,7 +251,7 @@ test('smoke CLI commands finish importing shared helpers and reject corruption b
       () =>
         execFileSync(
           process.execPath,
-          [path.join(root, 'scripts/release.mjs'), command, output],
+          [path.join(root, 'scripts/release/index.mjs'), command, output],
           { encoding: 'utf8', stdio: 'pipe', timeout: 15000 },
         ),
       (error) => {
@@ -561,7 +561,7 @@ test('one-time recovery pins the successful dry-run attempt, exact artifact and 
 
 test('recovery authenticates original manifest bytes before validating files or checking npm', async (t) => {
   const bytes = await fs.readFile(
-    path.join(root, 'scripts/fixtures/v0.1.0-release-manifest.json'),
+    path.join(root, 'tests/packaging/fixtures/v0.1.0-release-manifest.json'),
   );
   verifyRecoveryManifest(bytes);
   const manifest = JSON.parse(bytes);
@@ -807,7 +807,8 @@ test('tag validation reads the selected commit and checks dry-run tags too', asy
 });
 
 test('downloaded GitHub checksums and wrong runners fail explicitly', async (t) => {
-  const { verifyNative } = await import('./verify-install.mjs');
+  const { verifyNative } =
+    await import('../../scripts/release/verify-install.mjs');
   const { source, output } = await fixture(t);
   const manifest = await prepare(source, output);
   const previous = process.env.RELEASE_TARGET;
@@ -837,7 +838,8 @@ test('downloaded GitHub checksums and wrong runners fail explicitly', async (t) 
 });
 
 test('reused bundles accept API run names and require exact tag workflow provenance', async () => {
-  const { validateSourceRun, verifySourceRun } = await import('./release.mjs');
+  const { validateSourceRun, verifySourceRun } =
+    await import('../../scripts/release/index.mjs');
   const commit = 'a'.repeat(40),
     tag = 'v0.1.0';
   const record = {
@@ -911,7 +913,8 @@ test('reused bundles accept API run names and require exact tag workflow provena
 });
 
 test('Windows launcher executable-mode variation never hides changed payloads', async () => {
-  const { verifyLauncherAgreement } = await import('./release.mjs');
+  const { verifyLauncherAgreement } =
+    await import('../../scripts/release/index.mjs');
   const original = [
     { name: 'package/bin/hpdev.cjs', mode: '-rwxr-xr-x', sha256: 'same' },
     { name: 'package/README.md', mode: '-rw-r--r--', sha256: 'readme' },

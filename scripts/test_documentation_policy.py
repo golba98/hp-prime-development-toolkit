@@ -55,11 +55,19 @@ class PublicationTests(unittest.TestCase):
         self.write(guard.POLICY, json.dumps(self.policy))
         self.git("add", ".")
         self.git("commit", "-qm", "Public baseline")
-        self.baseline = guard.scan(guard.Snapshot(self.root, ref="HEAD"), self.policy)[0]
+        self.baseline = guard.scan(guard.Snapshot(self.root, ref="HEAD"), self.policy)[
+            0
+        ]
         path = guard.state_path(self.root)
         path.parent.mkdir()
         path.write_text(
-            json.dumps({"policy": self.policy, "catalog": self.baseline, "approved_bundles": []})
+            json.dumps(
+                {
+                    "policy": self.policy,
+                    "catalog": self.baseline,
+                    "approved_bundles": [],
+                }
+            )
         )
 
     def git(self, *args):
@@ -87,7 +95,9 @@ class PublicationTests(unittest.TestCase):
         guard.propose(self.root, guard.Snapshot(self.root), ".private/review.json")
         self.assertEqual(path.read_text(), formatted)
         proposal = json.loads((self.root / ".private/review.json").read_text())
-        self.assertEqual(proposal["catalog"][guard.POLICY], guard.sha(formatted.encode()))
+        self.assertEqual(
+            proposal["catalog"][guard.POLICY], guard.sha(formatted.encode())
+        )
 
     def test_ordinary_project_types_do_not_require_document_review(self):
         for name, text in [
@@ -101,30 +111,46 @@ class PublicationTests(unittest.TestCase):
         self.git("add", ".")
         self.assertEqual(self.result(True)[2], [])
 
-    def test_dependency_updates_pass_but_publication_command_changes_require_review(self):
+    def test_dependency_updates_pass_but_publication_command_changes_require_review(
+        self,
+    ):
         self.write("package.json", json.dumps({"dependencies": {"example": "1"}}))
         self.git("add", ".")
         self.assertFalse(self.result(True)[2])
         self.write("package.json", json.dumps({"dependencies": {"example": "2"}}))
         self.git("add", ".")
         self.assertFalse(self.result(True)[2])
-        self.write("package.json", json.dumps({"scripts": {"check:docs": "echo bypass"}}))
+        self.write(
+            "package.json", json.dumps({"scripts": {"check:docs": "echo bypass"}})
+        )
         self.git("add", ".")
-        self.assertTrue(any("package.json#publication" in e for e in self.result(True)[2]))
+        self.assertTrue(
+            any("package.json#publication" in e for e in self.result(True)[2])
+        )
 
     def test_readme_exact_bytes_and_new_public_documents_need_review(self):
         self.write("README.md", "# Public project\n\nNew installation command.\n")
-        self.write("docs/research.md", "# Reproducible research\n\nMethods and measured results.\n")
+        self.write(
+            "docs/research.md",
+            "# Reproducible research\n\nMethods and measured results.\n",
+        )
         self.git("add", ".")
         candidate = guard.Snapshot(self.root, staged=True)
-        _catalog, digest, errors, _ = guard.validate(candidate, self.policy, self.baseline)
+        _catalog, digest, errors, _ = guard.validate(
+            candidate, self.policy, self.baseline
+        )
         self.assertEqual(len(errors), 2)
-        self.assertEqual(guard.validate(candidate, self.policy, self.baseline, [digest])[2], [])
+        self.assertEqual(
+            guard.validate(candidate, self.policy, self.baseline, [digest])[2], []
+        )
         self.write("README.md", "# Public project\n\nDifferent bytes after review.\n")
         self.git("add", "README.md")
         self.assertTrue(
             guard.validate(
-                guard.Snapshot(self.root, staged=True), self.policy, self.baseline, [digest]
+                guard.Snapshot(self.root, staged=True),
+                self.policy,
+                self.baseline,
+                [digest],
             )[2]
         )
 
@@ -155,7 +181,10 @@ class PublicationTests(unittest.TestCase):
         self.assertGreaterEqual(sum("Private path" in e for e in result[2]), 6)
         self.assertTrue(
             guard.validate(
-                guard.Snapshot(self.root, staged=True), self.policy, self.baseline, [result[1]]
+                guard.Snapshot(self.root, staged=True),
+                self.policy,
+                self.baseline,
+                [result[1]],
             )[2]
         )
 
@@ -198,21 +227,34 @@ class PublicationTests(unittest.TestCase):
         self.assertTrue(
             any(
                 "Renamed private content" in e
-                for e in guard.scan(guard.Snapshot(self.root, staged=True), self.policy)[1]
+                for e in guard.scan(
+                    guard.Snapshot(self.root, staged=True), self.policy
+                )[1]
             )
         )
 
     def test_private_archive_members_nested_archives_and_extension_tricks(self):
         self.write(
             "payload.bin",
-            zip_bytes({"safe/inner.zip": zip_bytes({".private/handoff.md": b"private"})}),
+            zip_bytes(
+                {"safe/inner.zip": zip_bytes({".private/handoff.md": b"private"})}
+            ),
         )
         self.git("add", ".")
         self.assertTrue(any("archive member" in e for e in self.result(True)[2]))
-        for name in ["../escape.md", "/absolute.md", "C:\\private.md", "docs/%2e%2e/escape.md"]:
+        for name in [
+            "../escape.md",
+            "/absolute.md",
+            "C:\\private.md",
+            "docs/%2e%2e/escape.md",
+        ]:
             errors, warnings = [], []
             guard.inspect_archive(
-                "fixture.zip", zip_bytes({name: b"notes"}), self.policy, errors, warnings
+                "fixture.zip",
+                zip_bytes({name: b"notes"}),
+                self.policy,
+                errors,
+                warnings,
             )
             self.assertTrue(errors, name)
 
@@ -224,7 +266,9 @@ class PublicationTests(unittest.TestCase):
             entry.linkname = ".private/notes.md"
             container.addfile(entry)
         errors, warnings = [], []
-        guard.inspect_archive("fixture.tar", stream.getvalue(), self.policy, errors, warnings)
+        guard.inspect_archive(
+            "fixture.tar", stream.getvalue(), self.policy, errors, warnings
+        )
         self.assertTrue(errors)
         old = guard.MAX_EXPANDED
         try:
@@ -240,7 +284,11 @@ class PublicationTests(unittest.TestCase):
     def test_standalone_compressed_markdown_is_inspected(self):
         errors, warnings = [], []
         members = guard.inspect_archive(
-            "guide.md.gz", gzip.compress(b"# Public guide\n"), self.policy, errors, warnings
+            "guide.md.gz",
+            gzip.compress(b"# Public guide\n"),
+            self.policy,
+            errors,
+            warnings,
         )
         self.assertFalse(errors)
         self.assertIn("guide.md.gz!guide.md", members)
@@ -254,10 +302,17 @@ class PublicationTests(unittest.TestCase):
         previous.chmod(0o755)
         guard.install_hooks(self.root)
         remote = self.root / ".private/remote.git"
-        subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True, env=self.env)
+        subprocess.run(
+            ["git", "init", "--bare", "-q", str(remote)], check=True, env=self.env
+        )
         head = self.git("rev-parse", "HEAD").decode().strip()
         self.git(
-            "-c", "core.hooksPath=/dev/null", "push", "-q", str(remote), "HEAD:refs/heads/main"
+            "-c",
+            "core.hooksPath=/dev/null",
+            "push",
+            "-q",
+            str(remote),
+            "HEAD:refs/heads/main",
         )
         data = ("refs/heads/main " + head + " refs/heads/main " + head + "\n").encode()
         process = subprocess.run(
@@ -271,7 +326,8 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(process.returncode, 0, process.stderr)
         self.assertEqual((self.root / ".git/legacy-input").read_bytes(), data)
         self.assertEqual(
-            (self.root / ".git/legacy-args").read_text().splitlines(), ["origin", str(remote)]
+            (self.root / ".git/legacy-args").read_text().splitlines(),
+            ["origin", str(remote)],
         )
 
     def test_linked_worktree_uses_common_review_state(self):
@@ -289,7 +345,10 @@ class PublicationTests(unittest.TestCase):
         self.assertTrue(warnings)
         self.assertEqual(
             guard.validate(
-                guard.Snapshot(self.root, staged=True), self.policy, self.baseline, [digest]
+                guard.Snapshot(self.root, staged=True),
+                self.policy,
+                self.baseline,
+                [digest],
             )[2],
             [],
         )
@@ -328,7 +387,9 @@ class PublicationTests(unittest.TestCase):
         self.assertIn(b"interactive host terminal", process.stderr)
 
     def test_owner_review_records_exact_snapshot_and_later_edits_fail(self):
-        self.write("README.md", "# Public project\n\nReviewed installation improvement.\n")
+        self.write(
+            "README.md", "# Public project\n\nReviewed installation improvement.\n"
+        )
         guard.propose(self.root, guard.Snapshot(self.root), ".private/review.json")
         proposal = json.loads((self.root / ".private/review.json").read_text())
         with (
@@ -343,7 +404,9 @@ class PublicationTests(unittest.TestCase):
 
     def test_owner_comments_are_bound_to_author_head_and_repository_digest(self):
         digest = guard.bundle(self.policy, self.baseline)
-        comments = [{"user": {"id": 42, "type": "User"}, "body": "/docs-approve head " + digest}]
+        comments = [
+            {"user": {"id": 42, "type": "User"}, "body": "/docs-approve head " + digest}
+        ]
         self.assertTrue(guard.owner_comment(comments, 42, "head", digest))
         self.assertFalse(guard.owner_comment(comments, 7, "head", digest))
         self.assertFalse(guard.owner_comment(comments, 42, "other-head", digest))
@@ -352,14 +415,20 @@ class PublicationTests(unittest.TestCase):
                 comments,
                 42,
                 "head",
-                guard.bundle(dict(self.policy, repository="golba98/other"), self.baseline),
+                guard.bundle(
+                    dict(self.policy, repository="golba98/other"), self.baseline
+                ),
             )
         )
 
-    def test_ci_uses_trusted_code_and_owner_approval_cannot_override_private_paths(self):
+    def test_ci_uses_trusted_code_and_owner_approval_cannot_override_private_paths(
+        self,
+    ):
         base = self.git("rev-parse", "HEAD").decode().strip()
         self.write("README.md", "# Public guide\n\nReviewed install instructions.\n")
-        self.write(guard.SCRIPT, "raise RuntimeError('PR checker must never execute')\n")
+        self.write(
+            guard.SCRIPT, "raise RuntimeError('PR checker must never execute')\n"
+        )
         self.git("add", ".")
         self.git("commit", "-qm", "Proposed documentation and checker")
         head = self.git("rev-parse", "HEAD").decode().strip()
@@ -398,7 +467,11 @@ class PublicationTests(unittest.TestCase):
             patch.object(guard, "git", mocked_git),
             patch.object(guard, "api", mocked_api),
             patch.dict(
-                os.environ, {"GITHUB_REPOSITORY": "golba98/fixture", "GITHUB_TOKEN": "fixture-only"}
+                os.environ,
+                {
+                    "GITHUB_REPOSITORY": "golba98/fixture",
+                    "GITHUB_TOKEN": "fixture-only",
+                },
             ),
         ):
             self.assertFalse(guard.ci(self.root, 1))
@@ -418,7 +491,11 @@ class PublicationTests(unittest.TestCase):
             patch.object(guard, "git", mocked_git),
             patch.object(guard, "api", mocked_api),
             patch.dict(
-                os.environ, {"GITHUB_REPOSITORY": "golba98/fixture", "GITHUB_TOKEN": "fixture-only"}
+                os.environ,
+                {
+                    "GITHUB_REPOSITORY": "golba98/fixture",
+                    "GITHUB_TOKEN": "fixture-only",
+                },
             ),
         ):
             self.assertTrue(guard.ci(self.root, 1))
@@ -426,7 +503,9 @@ class PublicationTests(unittest.TestCase):
 
     def test_push_range_includes_reverted_intermediate_violation_and_tags(self):
         remote = self.root / ".private/remote.git"
-        subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True, env=self.env)
+        subprocess.run(
+            ["git", "init", "--bare", "-q", str(remote)], check=True, env=self.env
+        )
         baseline = self.git("rev-parse", "HEAD").decode().strip()
         self.git("push", "-q", str(remote), "HEAD:refs/heads/main")
         self.write("docs/secret.md", "# Agent handoff\nPrivate progress\n")
