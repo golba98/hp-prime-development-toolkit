@@ -1,0 +1,14 @@
+{
+  "retiredPaths": [
+    "docs/implementation-report.md"
+  ],
+  "publicMarkdown": {
+    "README.md": "Public technical documentation, installation, usage or attribution",
+    "THIRD_PARTY_NOTICES.md": "Public technical documentation, installation, usage or attribution",
+    "docs/architecture.md": "Public technical documentation, installation, usage or attribution",
+    "docs/json-api.md": "Public technical documentation, installation, usage or attribution",
+    "docs/packaging.md": "Public technical documentation, installation, usage or attribution",
+    "docs/testing.md": "Public technical documentation, installation, usage or attribution",
+    "tests/fixtures/README.md": "Public technical documentation, installation, usage or attribution"
+  }
+}

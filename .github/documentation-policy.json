@@ -1,0 +1,43 @@
+{
+  "owner": "golba98",
+  "private_git_blobs": [
+    "2eb771c7ebe17b4deb475f2959aee5d9ccfaf55c"
+  ],
+  "private_hashes": [
+    "94847d76b4f90e26207b5d0bafa82f1f6404f1e9930b8fd3821963c83aad052f"
+  ],
+  "private_paths": [
+    ".agents/scratch/",
+    ".agents/teamwork/",
+    ".private/",
+    "docs/_reports/",
+    "docs/implementation-report.md",
+    "docs/tmp/",
+    "release-bundle/"
+  ],
+  "protected_paths": [
+    ".github/documentation-policy.json",
+    "scripts/check_documentation.py",
+    "scripts/test_documentation_policy.py",
+    ".gitignore",
+    ".npmignore",
+    ".dockerignore",
+    "MANIFEST.in",
+    "scripts/documentation-policy.json",
+    "scripts/check-docs.mjs",
+    "scripts/install-hooks.mjs",
+    "tools/stage-workspace.py",
+    "scripts/package.mjs"
+  ],
+  "public_markdown": {
+    "README.md": "43af9d5fb17801e02da9c09359f28f76febe26729e3e53d168ff6f4d0a9d2a33",
+    "THIRD_PARTY_NOTICES.md": "022bb7a8dca4fe09b75193f7111000c03307e26d115c107e0f99bda6b68b881f",
+    "docs/architecture.md": "211ee640b2fede8a5d2ae5852195429079479f5bde57bc1bf1c1796199d89128",
+    "docs/json-api.md": "677f50c70c68c1c825e76d590b88040ad88675f91d0af5b4cc4f94ff2b853863",
+    "docs/packaging.md": "df3e6b6f9f788b7ee1bc53756aa05915ee7fed10b5ae0257598987e6ed34d6b0",
+    "docs/testing.md": "3088436d206dce3293bb22d9c97e24b76099ef13c5f15479e4c84932bf0706a8",
+    "tests/fixtures/README.md": "4d2a3c13e55abceef776bfa12d7dbec698cdb047011c98c854d25590ce3a1171"
+  },
+  "repository": "golba98/hp-prime-development-toolkit",
+  "version": 1
+}
