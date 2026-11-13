@@ -7,7 +7,8 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
-import { metadata, platforms, resolveRef, prepare, validateBundle, inspectPackage, publish, ensurePublished, githubRelease, validateMetadata, validateRef } from './release.mjs';
+import { metadata, platforms, resolveRef, prepare, validateBundle, inspectPackage, publish, ensurePublished, verifyPublishedBundle, githubRelease, validateMetadata, validateRef } from './release.mjs';
+import { recovery, validateRecoveryContext, verifyRecoverySource, verifyRecoveryManifest, verifyRecoveryBundle } from './recover-v0.1.0.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -110,6 +111,21 @@ test('dry-run assembly validates all platforms and preserves package integrity',
   await assert.rejects(validateBundle(output), /integrity mismatch/);
 });
 
+test('smoke CLI commands finish importing shared helpers and reject corruption before installation', async t => {
+  const { source, output } = await fixture(t);
+  const manifest = await prepare(source, output);
+  await fs.appendFile(path.join(output, manifest.npm[0].file), 'changed');
+  for (const command of ['smoke', 'native-smoke']) {
+    assert.throws(() => execFileSync(process.execPath, [path.join(root, 'scripts/release.mjs'), command, output],
+      { encoding: 'utf8', stdio: 'pipe', timeout: 15000 }), error => {
+      assert.equal(error.status, 1);
+      assert.match(error.stderr, /Artifact integrity mismatch/);
+      assert.doesNotMatch(error.stderr, /unsettled top-level await/);
+      return true;
+    });
+  }
+});
+
 test('missing platform artifacts and incorrect archive checksums fail before publication', async t => {
   const { source, output, pkg } = await fixture(t);
   const target = platforms[4][0];
@@ -163,6 +179,110 @@ test('unavailable or conflicting registry versions cannot be accepted', async ()
   await assert.rejects(ensurePublished(entry, async () => { calls++; return null; }, async () => {}), /Registry did not expose/);
   assert.equal(calls, 12);
   await assert.rejects(ensurePublished(entry, async () => ({ dist: { integrity: 'other' } })), /integrity differs/);
+});
+
+test('read-only recovery verifies every published integrity and rejects missing, changed or corrupt packages', async t => {
+  const { source, output } = await fixture(t);
+  const manifest = await prepare(source, output);
+  const checked = [];
+  const lookup = async (name, version) => {
+    checked.push(name);
+    assert.equal(version, '0.1.0');
+    return { dist: { integrity: manifest.npm.find(entry => entry.name === name).integrity } };
+  };
+  assert.deepEqual(await verifyPublishedBundle(output, { lookup }), manifest);
+  assert.deepEqual(checked, manifest.npm.map(entry => entry.name));
+  // Exercise every package, including the launcher and the last platform.
+  for (const entry of manifest.npm) {
+    await assert.rejects(verifyPublishedBundle(output, { lookup: async name => name === entry.name
+      ? { dist: { integrity: 'different' } } : lookup(name, entry.version) }), /Published integrity differs/);
+    await assert.rejects(verifyPublishedBundle(output, { lookup: async name => name === entry.name
+      ? null : lookup(name, entry.version), wait: async () => {} }), /Registry did not expose/);
+  }
+  await fs.appendFile(path.join(output, manifest.npm[0].file), 'changed');
+  await assert.rejects(verifyPublishedBundle(output, { lookup: () => assert.fail('corrupt bundle reached registry') }), /integrity mismatch/);
+});
+
+function recoveryContext() {
+  return {
+    GITHUB_REPOSITORY: recovery.repository, GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF: 'refs/heads/main',
+    GITHUB_WORKFLOW_REF: `${recovery.repository}/.github/workflows/recover-v0.1.0.yml@refs/heads/main`,
+    GITHUB_SHA: 'b'.repeat(40), GITHUB_WORKFLOW_SHA: 'b'.repeat(40), RELEASE_SHA: recovery.commit,
+  };
+}
+
+test('one-time recovery only executes its reviewed workflow from main with the pinned source commit', () => {
+  const env = recoveryContext();
+  validateRecoveryContext(env);
+  for (const changed of [
+    { GITHUB_REPOSITORY: 'someone/fork' }, { GITHUB_EVENT_NAME: 'pull_request' },
+    { GITHUB_REF: 'refs/tags/v0.1.0' }, { GITHUB_REF: 'refs/heads/feature' },
+    { GITHUB_WORKFLOW_REF: `${recovery.repository}/.github/workflows/other.yml@refs/heads/main` },
+    { GITHUB_SHA: 'invalid' }, { GITHUB_WORKFLOW_SHA: 'c'.repeat(40) }, { RELEASE_SHA: 'c'.repeat(40) },
+  ]) assert.throws(() => validateRecoveryContext({ ...env, ...changed }), /Recovery/);
+});
+
+function recoveryRecords() {
+  return {
+    [`actions/runs/${recovery.runId}`]: {
+      id: Number(recovery.runId), workflow_id: recovery.workflowId, run_attempt: recovery.runAttempt,
+      name: 'Release v0.1.0 (dry run)', display_title: 'Release v0.1.0 (dry run)',
+      path: '.github/workflows/release.yml', event: 'workflow_dispatch', status: 'completed', conclusion: 'success',
+      head_sha: recovery.commit, head_branch: recovery.tag, head_repository: { full_name: recovery.repository },
+    },
+    [`actions/artifacts/${recovery.artifactId}`]: {
+      id: recovery.artifactId, name: 'release-bundle', expired: false, digest: recovery.artifactDigest,
+      workflow_run: { id: Number(recovery.runId), head_sha: recovery.commit, head_branch: recovery.tag },
+    },
+    [`git/ref/tags/${recovery.tag}`]: { object: { type: 'tag', sha: recovery.tagObject } },
+    [`git/tags/${recovery.tagObject}`]: { tag: recovery.tag, object: { type: 'commit', sha: recovery.commit } },
+  };
+}
+
+test('one-time recovery pins the successful dry-run attempt, exact artifact and unchanged annotated tag', async () => {
+  const records = recoveryRecords();
+  const verify = values => verifyRecoverySource({ env: recoveryContext(), api: async endpoint => {
+    assert.ok(Object.hasOwn(values, endpoint), `Unexpected endpoint ${endpoint}`);
+    return values[endpoint];
+  } });
+  await verify(records);
+  const run = `actions/runs/${recovery.runId}`, artifact = `actions/artifacts/${recovery.artifactId}`;
+  for (const [endpoint, changed] of [
+    [run, { id: 43127309075 }], [run, { workflow_id: 1 }], [run, { run_attempt: 2 }],
+    [run, { display_title: 'Release v0.1.0 (publish)' }], [run, { conclusion: 'failure' }],
+    [run, { head_sha: 'c'.repeat(40) }], [run, { head_branch: 'main' }],
+    [run, { path: '.github/workflows/other.yml' }], [run, { head_repository: { full_name: 'someone/fork' } }],
+    [artifact, { id: 1 }], [artifact, { name: 'validated-distribution' }], [artifact, { expired: true }],
+    [artifact, { digest: 'sha256:other' }], [artifact, { workflow_run: { id: 43127309075 } }],
+    [artifact, { workflow_run: { ...records[artifact].workflow_run, head_sha: 'c'.repeat(40) } }],
+    [artifact, { workflow_run: { ...records[artifact].workflow_run, head_branch: 'main' } }],
+    [`git/ref/tags/${recovery.tag}`, { object: { type: 'commit', sha: recovery.commit } }],
+    [`git/ref/tags/${recovery.tag}`, { object: { type: 'tag', sha: 'c'.repeat(40) } }],
+    [`git/tags/${recovery.tagObject}`, { object: { type: 'commit', sha: 'c'.repeat(40) } }],
+  ]) {
+    const modified = structuredClone(records);
+    modified[endpoint] = { ...modified[endpoint], ...changed };
+    await assert.rejects(verify(modified), /Recovery|Original|tag-dispatched/);
+  }
+  for (const endpoint of Object.keys(records)) await assert.rejects(verify({ ...records, [endpoint]: null }));
+  await assert.rejects(verifyRecoverySource({ env: { ...recoveryContext(), GITHUB_REF: 'refs/heads/feature' },
+    api: () => assert.fail('invalid dispatch reached API') }), /main/);
+});
+
+test('recovery authenticates original manifest bytes before validating files or checking npm', async t => {
+  const bytes = await fs.readFile(path.join(root, 'scripts/fixtures/v0.1.0-release-manifest.json'));
+  verifyRecoveryManifest(bytes);
+  const manifest = JSON.parse(bytes);
+  assert.equal(manifest.commit, recovery.commit);
+  assert.equal(manifest.version, recovery.version);
+  assert.equal(manifest.npm.length, 6);
+  assert.equal(manifest.native.length, 5);
+  assert.throws(() => verifyRecoveryManifest(Buffer.concat([bytes, Buffer.from('\n')])), /manifest differs/);
+  manifest.npm[0].integrity = 'different';
+  assert.throws(() => verifyRecoveryManifest(JSON.stringify(manifest)), /manifest differs/);
+  const directory = await temporary(t);
+  await write(directory, 'release-manifest.json', manifest);
+  await assert.rejects(verifyRecoveryBundle(directory, { lookup: () => assert.fail('changed manifest reached registry') }), /manifest differs/);
 });
 
 test('artifact collection rejects extra files, duplicate members and conflicting launchers', async t => {
@@ -301,18 +421,28 @@ test('downloaded GitHub checksums and wrong runners fail explicitly', async t =>
   assert.equal(manifest.native.length, 5);
 });
 
-test('reused bundles require the exact tag workflow identity, not self-reported metadata', async () => {
-  const { validateSourceRun } = await import('./release.mjs');
+test('reused bundles accept API run names and require exact tag workflow provenance', async () => {
+  const { validateSourceRun, verifySourceRun } = await import('./release.mjs');
   const commit = 'a'.repeat(40), tag = 'v0.1.0';
-  const record = { name: 'Manual release', path: '.github/workflows/release.yml', event: 'workflow_dispatch',
-    conclusion: 'success', head_sha: commit, head_repository: { full_name: 'golba98/hp-prime-development-toolkit' },
+  const record = { name: 'Release v0.1.0 (dry run)', path: '.github/workflows/release.yml', event: 'workflow_dispatch',
+    status: 'completed', conclusion: 'success', head_branch: tag, head_sha: commit, head_repository: { full_name: 'golba98/hp-prime-development-toolkit' },
     display_title: 'Release v0.1.0 (dry run)' };
   validateSourceRun(record, commit, tag);
+  validateSourceRun({ ...record, name: 'Manual release' }, commit, tag);
+  validateSourceRun({ ...record, name: 'Release v0.1.0 (publish)', display_title: 'Release v0.1.0 (publish)' }, commit, tag);
+  assert.equal(await verifySourceRun({ id: '43124712655', commit, tag, api: async endpoint => {
+    assert.equal(endpoint, 'actions/runs/43124712655');
+    return record;
+  } }), record);
+  await assert.rejects(verifySourceRun({ id: '../other', api: () => assert.fail('invalid ID reached API') }), /Invalid bundle/);
   for (const changed of [
     { head_sha: 'b'.repeat(40) }, { path: '.github/workflows/unreviewed.yml' },
     { display_title: 'Release unreviewed-branch (dry run)' }, { conclusion: 'failure' },
-    { head_repository: { full_name: 'someone/fork' } },
+    { head_repository: { full_name: 'someone/fork' } }, { head_branch: 'main' },
+    { event: 'pull_request' }, { status: 'in_progress' },
   ]) assert.throws(() => validateSourceRun({ ...record, ...changed }, commit, tag), /tag-dispatched run/);
+  assert.throws(() => validateSourceRun(null, commit, tag), /tag-dispatched run/);
+  await assert.rejects(verifySourceRun({ id: '43124712655', commit, tag, api: async () => ({ ...record, head_sha: 'b'.repeat(40) }) }), /tag-dispatched run/);
 });
 
 test('Windows launcher executable-mode variation never hides changed payloads', async () => {

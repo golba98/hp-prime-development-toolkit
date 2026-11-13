@@ -216,6 +216,12 @@ export async function ensurePublished(entry, lookup = registryVersion, wait = ()
   }
   throw new Error(`Registry did not expose ${entry.name}@${entry.version}; rerun the publish job using the preserved artifacts`);
 }
+// Read-only verification for releases whose exact tarballs already exist on npm.
+export async function verifyPublishedBundle(directory, { lookup = registryVersion, wait } = {}) {
+  const manifest = await validateBundle(directory);
+  for (const entry of manifest.npm) await ensurePublished(entry, lookup, wait);
+  return manifest;
+}
 export async function publish(directory, {
   lookup = registryVersion,
   upload = file => run('npm', ['publish', file, '--access', 'public', '--tag', 'latest', '--ignore-scripts', '--registry', registry]),
@@ -238,7 +244,7 @@ export async function publish(directory, {
     console.log(`Verified ${entry.name}@${entry.version}`);
   }
 }
-async function githubApi(endpoint) {
+export async function githubApi(endpoint) {
   const response = await fetch(`https://api.github.com/repos/golba98/hp-prime-development-toolkit/${endpoint}`, {
     headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' },
     signal: AbortSignal.timeout(30000),
@@ -248,17 +254,21 @@ async function githubApi(endpoint) {
   return response.json();
 }
 export function validateSourceRun(record, commit, tag) {
-  ensure(record?.name === 'Manual release' && record.path === '.github/workflows/release.yml'
-    && record.event === 'workflow_dispatch' && record.conclusion === 'success'
-    && record.head_sha === commit && record.head_repository?.full_name === githubRepository
+  // GitHub can populate `name` from run-name (for example "Release v0.1.0
+  // (dry run)"). Identify the workflow by its path and execution provenance.
+  ensure(record?.path === '.github/workflows/release.yml'
+    && record.event === 'workflow_dispatch' && record.status === 'completed' && record.conclusion === 'success'
+    && record.head_branch === tag && record.head_sha === commit && record.head_repository?.full_name === githubRepository
     && [`Release ${tag} (dry run)`, `Release ${tag} (publish)`].includes(record.display_title),
   'Bundle must come from a successful tag-dispatched run of the selected source workflow');
 }
-async function verifySourceRun() {
-  const id = process.env.BUNDLE_RUN_ID;
+export async function verifySourceRun({
+  id = process.env.BUNDLE_RUN_ID, commit = process.env.RELEASE_SHA, tag = process.env.RELEASE_TAG, api = githubApi,
+} = {}) {
   ensure(/^[0-9]+$/.test(id), 'Invalid bundle workflow run ID');
-  const record = await githubApi(`actions/runs/${id}`);
-  validateSourceRun(record, process.env.RELEASE_SHA, process.env.RELEASE_TAG);
+  const record = await api(`actions/runs/${id}`);
+  validateSourceRun(record, commit, tag);
+  return record;
 }
 async function assetBytes(asset) {
   const response = await fetch(asset.url, { headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/octet-stream' }, signal: AbortSignal.timeout(60000) });
@@ -283,8 +293,7 @@ export async function githubRelease(directory, finalize = false, {
   tagCommit = tag => run('git', ['rev-parse', '--verify', `refs/tags/${tag}^{commit}`]).trim(),
 } = {}) {
   ensure(process.env.RELEASE_PUBLISH === 'true', 'Release creation requires RELEASE_PUBLISH=true');
-  const manifest = await validateBundle(directory);
-  for (const entry of manifest.npm) await ensurePublished(entry, lookup);
+  const manifest = await verifyPublishedBundle(directory, { lookup });
   const tag = `v${manifest.version}`;
   ensure(await tagCommit(tag) === manifest.commit, 'Release tag moved or does not match the bundle');
   let release = await findRelease(tag, api);
@@ -310,7 +319,7 @@ export async function githubRelease(directory, finalize = false, {
   return release;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+async function main() {
   const [command, source = 'artifacts', output = 'release'] = process.argv.slice(2);
   if (command === 'ref') await validateRef();
   else if (command === 'prepare') await prepare(path.resolve(source), path.resolve(output));
@@ -325,4 +334,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     else await verifyNative(path.resolve(source), { publicRelease: process.env.RELEASE_PUBLIC === 'true' });
   }
   else throw new Error('Usage: node scripts/release.mjs ref|prepare [ARTIFACTS OUTPUT]|verify DIRECTORY|publish DIRECTORY|stage DIRECTORY|complete DIRECTORY|smoke DIRECTORY|native-smoke DIRECTORY');
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  // Finish module evaluation before verify-install imports these shared exports.
+  // Awaiting main here would deadlock the smoke commands' circular import.
+  main().catch(error => { console.error(error); process.exitCode = 1; });
 }

@@ -1,0 +1,80 @@
+{
+  "version": "0.1.0",
+  "commit": "435889a144b9cb011253eca51dc3c3916508e86c",
+  "npm": [
+    {
+      "file": "hp-prime-devkit-linux-x64-0.1.0.tgz",
+      "name": "hp-prime-devkit-linux-x64",
+      "version": "0.1.0",
+      "integrity": "sha512-utlDX8MVMZnj9y5bXDt1d5iU1k3gHphmFUf7WedVjvSW1CYreqVWxIv7K7tVGbAwOuLGXO0y4HGeiZsXNk4MVg==",
+      "sha256": "1517a7764c66918955d556711a2ca04db9a7c92a8d812ab3cb25e393268dfcc4",
+      "os": "linux",
+      "cpu": "x64"
+    },
+    {
+      "file": "hp-prime-devkit-0.1.0.tgz",
+      "name": "hp-prime-devkit",
+      "version": "0.1.0",
+      "integrity": "sha512-RoJ3n4v6frK8wHQaMDS+42AJdGnDSqqYc8CvqOviB8N9qL32gnHCisn9NI2+WOzTvbMZzx63j9SxuF1Xt7jrYg==",
+      "sha256": "107bd423aa47cc68c6a97944d705fabdeb11259961e250d94aed234078648f66"
+    },
+    {
+      "file": "hp-prime-devkit-linux-arm64-0.1.0.tgz",
+      "name": "hp-prime-devkit-linux-arm64",
+      "version": "0.1.0",
+      "integrity": "sha512-B2oULjVqNpjLaIcX45gBwp3XH9rWkotIKwunhAAV0RZViq3TlDcbnhblRy5izJBRWrni1Sf6l945VvxwZkfjhA==",
+      "sha256": "6095770c490397cb5ea305aaa32ba1aba926420067411232208f4be73904dd72",
+      "os": "linux",
+      "cpu": "arm64"
+    },
+    {
+      "file": "hp-prime-devkit-win32-x64-0.1.0.tgz",
+      "name": "hp-prime-devkit-win32-x64",
+      "version": "0.1.0",
+      "integrity": "sha512-YD2JSKlB4r96GTZnQ6/w2RJ/1F6SLVBK3CZ2fR2Vlf3tJlDpleAj6TI2sBkaTvJjvhpqaaiuFkuB73On7LrC8g==",
+      "sha256": "c5ad1c89fef82530cd35eb7fed8952aa735f06443564d3791a40fdf8acd6e5eb",
+      "os": "win32",
+      "cpu": "x64"
+    },
+    {
+      "file": "hp-prime-devkit-darwin-arm64-0.1.0.tgz",
+      "name": "hp-prime-devkit-darwin-arm64",
+      "version": "0.1.0",
+      "integrity": "sha512-x+QNiHc8qlmujcYJTQw738yaUgDi+D6+63ZVw1OFeGr+p5nlW11fAiwzPSEBgC9AO6LbCKviqQIt7nc0pj8zVA==",
+      "sha256": "336ceac101ff7414e00878e86e5ad2071ea6922ef1a622d30d9d5f01486c01b8",
+      "os": "darwin",
+      "cpu": "arm64"
+    },
+    {
+      "file": "hp-prime-devkit-darwin-x64-0.1.0.tgz",
+      "name": "hp-prime-devkit-darwin-x64",
+      "version": "0.1.0",
+      "integrity": "sha512-chAaLkTuPSx115WCeTO4DZDcDGOaZbeowPem4+nVwyoHNx6KKOtoyR9bod98bhzfDQNQkUeH2UySg/nXinfw9A==",
+      "sha256": "93741a9132091f780f8f95c797e8200eceea6c0e4cb7837f226fbaa86fb3107e",
+      "os": "darwin",
+      "cpu": "x64"
+    }
+  ],
+  "native": [
+    {
+      "file": "hpdev-0.1.0-x86_64-unknown-linux-musl.tar.gz",
+      "sha256": "5a01550fe581f59924f7598b619282d87bd832f722cd2a5d7651954ff9f79b14"
+    },
+    {
+      "file": "hpdev-0.1.0-aarch64-unknown-linux-musl.tar.gz",
+      "sha256": "af19f5402831ec66bc759c48e02eabf6acaf23e8366328e5c3e08e305b38a913"
+    },
+    {
+      "file": "hpdev-0.1.0-x86_64-pc-windows-msvc.tar.gz",
+      "sha256": "d553031c7de101ca37ae8c8df697f4d1f622522ecec869fcf9c555b4ee987cc0"
+    },
+    {
+      "file": "hpdev-0.1.0-aarch64-apple-darwin.tar.gz",
+      "sha256": "f10db8ef57664bde9b3675917c4d47436dadf649dc33f1c16ebdaa176fc5537f"
+    },
+    {
+      "file": "hpdev-0.1.0-x86_64-apple-darwin.tar.gz",
+      "sha256": "0902be64fd11475b3a178ec9907d3d6d27087a424fc2447aeb5ee096d4fd1ed0"
+    }
+  ]
+}
