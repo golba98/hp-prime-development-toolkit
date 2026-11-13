@@ -1,6 +1,7 @@
 """Real ZIP creation/extraction and fail-closed archive regression tests."""
 
 import importlib.util
+import os
 import stat
 import subprocess
 import sys
@@ -16,6 +17,54 @@ spec.loader.exec_module(module)
 
 
 class ArchiveTests(unittest.TestCase):
+    def test_timestamps_outside_zip_range_preserve_names_and_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "hpdev-windows"
+            old_directory = source / "licenses"
+            old_directory.mkdir(parents=True)
+            old_notice = old_directory / "LICENSE.txt"
+            old_notice.write_bytes(b"Original dependency licence\n")
+            future_file = source / "future.txt"
+            future_file.write_bytes(b"Future-dated file\n")
+            for path, timestamp in [
+                (source, 0),
+                (old_directory, 0),
+                (old_notice, 0),
+                (future_file, 4354905600),
+            ]:
+                os.utime(path, (timestamp, timestamp))
+            archive = root / "release.zip"
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(helper),
+                    "create",
+                    str(archive),
+                    str(source),
+                ],
+                check=True,
+            )
+            with zipfile.ZipFile(archive) as result:
+                for name in [
+                    "hpdev-windows/",
+                    "hpdev-windows/licenses/",
+                    "hpdev-windows/licenses/LICENSE.txt",
+                ]:
+                    self.assertEqual(result.getinfo(name).date_time[:3], (1980, 1, 1))
+                self.assertEqual(
+                    result.getinfo("hpdev-windows/future.txt").date_time[:3],
+                    (2107, 12, 31),
+                )
+                self.assertEqual(
+                    result.read("hpdev-windows/licenses/LICENSE.txt"),
+                    old_notice.read_bytes(),
+                )
+                self.assertEqual(
+                    result.read("hpdev-windows/future.txt"), future_file.read_bytes()
+                )
+
     def test_unicode_and_space_names_roundtrip(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

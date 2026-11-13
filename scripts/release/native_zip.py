@@ -46,7 +46,11 @@ def main():
     operation, file, *args = sys.argv[1:]
     if operation == "create":
         source = Path(args[0]).resolve()
-        with zipfile.ZipFile(file, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        # Cargo sources can retain epoch timestamps when copied on Windows.
+        # Clamp ZIP metadata to its supported range without changing payloads.
+        with zipfile.ZipFile(
+            file, "w", compression=zipfile.ZIP_DEFLATED, strict_timestamps=False
+        ) as archive:
             for path in [source, *sorted(source.rglob("*"))]:
                 if path.is_symlink() or not (path.is_file() or path.is_dir()):
                     raise ValueError("Only ordinary files/directories may be packaged")
