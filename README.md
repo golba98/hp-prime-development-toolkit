@@ -4,18 +4,17 @@
 
 **Write PPL on your computer. Check it, run it, and see what it draws.**
 
-`hpdev` brings HP Prime PPL development to your terminal: compiler checks,
+`hpdev` brings HP Prime PPL development to your desktop and terminal: compiler checks,
 execution, a stepping debugger, repeatable tests, and live display previews.
 It is a standalone Rust application built on the native engine from
-[HP Prime Emulator](https://github.com/golba98/hp-prime-emulator), with no GUI,
-HP firmware, or connected calculator required.
+[HP Prime Emulator](https://github.com/golba98/hp-prime-emulator), with a native desktop display and no HP firmware or connected calculator required.
 
 [Install](#install) · [Quick start](#quick-start) · [Commands](#commands) · [Documentation](#documentation) · [Compatibility](#compatibility-and-troubleshooting)
 
 | Develop | Inspect | Automate |
 | --- | --- | --- |
 | Check and run `.ppl` / `.hpprgm` files | Step through code and inspect variables | Assert results and compare image snapshots |
-| Preview the 320×240 display in a terminal or browser | Export PNGs and execution traces | Watch files and consume JSON reports |
+| Run the interactive 320×240 display in a native window | Export PNGs and execution traces | Watch files and consume JSON reports |
 
 <p align="center">
   <img src="tests/snapshots/DRAW.png" width="320" height="240" alt="Native 320 by 240 framebuffer output from the DRAW example">
@@ -43,7 +42,7 @@ hpdev --help
 The core needs no GUI, HID or Unicorn build dependencies. CI checks Linux
 x86_64/ARM64, Windows x86_64, and macOS ARM64/x86_64. All five platform checks
 must pass before a release; the CI badge above shows the current status.
-Linux release packaging targets musl for portability.
+Linux desktop release packaging targets GNU/glibc. Static musl builds remain available for headless use.
 
 ### npm and native downloads — forthcoming
 
@@ -60,6 +59,37 @@ will also be available from
 [GitHub Releases](https://github.com/golba98/hp-prime-development-toolkit/releases)
 for installation without Node or Rust. See [packaging](docs/packaging.md) for
 local packages and the release process.
+
+## Native desktop platforms
+
+The shared Winit/Softbuffer frontend targets Windows 10/11 x86-64, macOS 11+
+on Apple Silicon and Intel, and Linux on X11/Wayland. It uses the same PPL VM
+on every platform. CLI and graphical execution require no browser, WSL or XQuartz.
+
+Windows downloads use a ZIP containing `hpdev.exe`; extract it into a folder
+such as `$env:LOCALAPPDATA\Programs\hpdev` and add that folder to your user PATH
+through Environment Variables. Open a new PowerShell or Windows Terminal tab,
+then run `hpdev --version` and `hpdev run path\to\program.hpprgm`.
+The MSVC build statically links its C runtime. The CLI keeps its terminal;
+private workers do not open additional console windows.
+
+macOS downloads are separate ARM64 and x86-64 tar archives. Choose the matching
+architecture, verify the SHA-256 sidecar, extract it, and copy `hpdev` into
+`~/.local/bin` (add `export PATH="$HOME/.local/bin:$PATH"` to your shell profile).
+Run `chmod +x ~/.local/bin/hpdev` if executable permissions were lost.
+No Developer ID signing or notarization is claimed. For a trusted, checksum-verified
+download blocked by Gatekeeper, use the specific Open Anyway control in
+System Settings → Privacy & Security. Follow [Apple’s Gatekeeper instructions](https://support.apple.com/en-us/102445); do not disable Gatekeeper globally.
+
+Linux uses GNU/glibc desktop archives or a source install; the existing X11 and
+Wayland workflows remain supported. See [packaging](docs/packaging.md) for archive
+formats, dependency checks, and the frozen original release.
+
+Build results and native runtime results are distinct. CI runs the native OS
+acceptance suite; it fails with an explicit prerequisite diagnostic if a usable
+desktop or macOS test permissions are absent. See its uploaded `status.json`
+for the actual OS, interaction result and observed display scale. A target check
+alone does not establish Windows/macOS runtime compatibility.
 
 ## Quick start
 
@@ -88,7 +118,7 @@ upstream loader's supported binary program containers use the same engine.
 | Command | Behavior |
 | --- | --- |
 | `check FILE` | Parse and compile without running initializers or functions |
-| `run FILE` | Execute a selected native PPL entry point |
+| `run FILE` | Open an interactive native desktop window and execute a PPL entry point |
 | `debug FILE` | Actual statement stepping, breakpoints and variable/frame inspection |
 | `preview FILE` | Real framebuffer in terminal, native PNG, or local browser |
 | `watch FILE` | Debounced check/run, cancelling the previous execution before rerunning |
@@ -126,18 +156,33 @@ there is no automatic backend fallback or hardware control command.
 
 ## Input and execution limits
 
-Ordinary runs are deterministic and scripted. `--input TEXT` and `--choose N`
+Ordinary `run FILE` opens a standalone native desktop window with the actual
+320×240 framebuffer at 2× integer scaling. Use `--scale 1` through `--scale 8`
+to choose the initial scale. Keys (or `--show-keys`) reveals calculator keys
+beside the screen. Keyboard arrows, Escape, Enter, digits and operators use
+emulator mappings; mouse clicks become calculator touches. The final display
+stays visible; `--exit-on-finish` closes it automatically. Window close, Stop,
+F12 or Ctrl-C cancels and reaps the worker. No browser opens.
+
+`run --headless` is deterministic and scripted. `run --json` also remains
+headless; use `--gui --json` for a window and a final JSON report.
+A missing display produces an error with a headless suggestion. Builds without
+the `desktop` feature require `--headless` or `--json`.
+
+For headless execution, `--input TEXT` and `--choose N`
 are repeatable; `<ESC>` cancels INPUT and choice 0 cancels CHOOSE. The upstream
 `--keys` syntax accepts key codes 0–50, `-1` polls and `touch:X:Y` events.
 An exhausted script is a failure, not a successful execution or timeout.
 
-`run --interactive` enables terminal prompts; TUI and browser previews enable
+`run --interactive` explicitly selects the legacy terminal prompts; TUI and browser previews enable
 live input automatically. Line-mode prompts accept one field at a time;
 outside dialogs use `key 30`, `touch 120 40`, Enter, or `quit`. Interactive
 mode uses wall time; scripts use the upstream virtual clock and fixed date.
 Scripted messages acknowledge automatically. Interactive messages require OK.
 
-Default protections are 30 seconds total, five million VM instructions, depth
+Headless default protections are 30 seconds total and five million VM
+instructions. Desktop sessions have no default time or instruction budget;
+explicit `--max-time` and `--max-steps` still apply. Both modes retain depth
 1000, collection size one million, string size 16 MiB, and PRINT/dialog output
 4 MiB. The outer deadline includes compilation, blocking input and waiting for
 the first browser connection. `--no-time-limit` explicitly disables it.
@@ -155,6 +200,16 @@ after a 500 ms grace period it terminates and reaps the worker. This is process
 isolation for development, not a general-purpose OS security sandbox.
 
 ## Debugger
+
+The desktop Debug button opens an inspector with Pause, Resume, Step, Next
+and Out. Paused sessions show real VM source locations, locals, globals and
+stack; scroll for additional values. Click the command field to set
+`break LINE`, inspect `print NAME`, select `frame N`, or use the commands below.
+Buttons return keyboard focus to the calculator.
+Pause takes effect at the next statement boundary. A blocking dialog or
+`WAIT(0)` must return before a pending pause can produce an inspection snapshot.
+Dialog appearance and graphics inherit emulator compatibility limitations.
+
 
 `debug` selects the TUI on capable terminals. Use `--no-tui` for line commands
 and scripts, or `--tui` to request it explicitly. JSON defaults to command mode.
@@ -181,6 +236,21 @@ refer to the root source. Variables are read from real paused VM frames.
 While running, calculator keys reach the program; debugger commands apply while paused.
 Runtime failures retain the engine's source stack; the VM unwinds failed
 frames, so post-error locals at the failing instruction are not available.
+
+## Desktop keyboard and display scaling
+
+Arrows, Enter, Escape (calculator code 4), digits, arithmetic keys, and F1–F12
+use the upstream standalone emulator mapping. F12/On and Ctrl-C stop execution;
+Escape reaches the program or cancels its dialog. On macOS, Command-W closes
+the window and Command-Q quits through worker cleanup. Other Command chords
+do not become calculator function keys. Option can enter layout-produced text
+in dialogs; Control remains distinct. Use Fn/Globe with function keys when the
+macOS keyboard setting assigns them to media controls.
+
+Controls follow the native display scale; the calculator viewport retains
+integer physical pixels and 4:3 letterboxing. Pointer coordinates are translated
+from native pixels into 320×240 calculator coordinates. Resize or move between
+monitors without changing the PPL coordinate system.
 
 ## Display previews
 
@@ -269,7 +339,14 @@ controls differ from firmware. No physical-device parity is claimed.
 
 ## Development and license
 
+Follow the documentation contribution policy below for documentation and publication.
+New public Markdown needs an explicit reader/purpose entry in the policy registry.
+Internal notes belong in ignored `.private/`. Optional local hooks are installed
+with `npm run hooks:install`; inspect outgoing changes even when checks pass.
+
 ```sh
+npm run check:docs
+npm run test:docs
 cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace

@@ -1,0 +1,685 @@
+
+LOCAL bst_val, bst_left, bst_right, bst_used;
+LOCAL bst_root := 0, bst_size := 0;
+LOCAL bst_pos, bst_depth, bst_x, bst_y;
+LOCAL bst_rank := 0, bst_maxDepth := 0;
+LOCAL bst_scroll := 0;
+
+// Forward declaration for recursion
+BST_Layout(idx, dep);
+
+// =====================================================
+// BINARY SEARCH TREE VISUALIZER
+// HP Prime G1 - 320x240
+// Maximum: 20 nodes
+//
+// Touch menu:
+// Insert | Delete | Clear | Up | Down | Quit
+//
+// Physical keys:
+// UP / DOWN = scroll
+// ESC = quit
+// =====================================================
+
+// -----------------------------------------------------
+// INITIALIZATION
+// -----------------------------------------------------
+
+EXPORT BST_Init()
+BEGIN
+  // Initialize the first list from a literal.
+  // Copy it to the other parallel arrays.
+
+  bst_val := {
+    0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0
+  };
+
+  bst_left := bst_val;
+  bst_right := bst_val;
+  bst_used := bst_val;
+
+  bst_pos := bst_val;
+  bst_depth := bst_val;
+  bst_x := bst_val;
+  bst_y := bst_val;
+
+  bst_root := 0;
+  bst_size := 0;
+  bst_rank := 0;
+  bst_maxDepth := 0;
+  bst_scroll := 0;
+END;
+
+// -----------------------------------------------------
+// FIND UNUSED NODE SLOT
+// -----------------------------------------------------
+
+BST_FindFreeSlot()
+BEGIN
+  LOCAL i;
+
+  FOR i FROM 1 TO 20 DO
+    IF bst_used(i) == 0 THEN
+      RETURN i;
+    END;
+  END;
+
+  RETURN 0;
+END;
+
+// -----------------------------------------------------
+// INSERT VALUE
+// -----------------------------------------------------
+
+BST_Insert(v)
+BEGIN
+  LOCAL curr, parent, slot;
+
+  // Check duplicates before checking capacity.
+  curr := bst_root;
+  parent := 0;
+
+  WHILE curr <> 0 DO
+    parent := curr;
+
+    IF v == bst_val(curr) THEN
+      MSGBOX("Value already exists.");
+      RETURN;
+    END;
+
+    IF v < bst_val(curr) THEN
+      curr := bst_left(curr);
+    ELSE
+      curr := bst_right(curr);
+    END;
+  END;
+
+  slot := BST_FindFreeSlot();
+
+  IF slot == 0 THEN
+    MSGBOX("Tree full: maximum 20 nodes.");
+    RETURN;
+  END;
+
+  bst_val(slot) := v;
+  bst_left(slot) := 0;
+  bst_right(slot) := 0;
+  bst_used(slot) := 1;
+
+  IF parent == 0 THEN
+    bst_root := slot;
+  ELSE
+    IF v < bst_val(parent) THEN
+      bst_left(parent) := slot;
+    ELSE
+      bst_right(parent) := slot;
+    END;
+  END;
+
+  bst_size := bst_size + 1;
+END;
+
+// -----------------------------------------------------
+// DELETE VALUE
+// -----------------------------------------------------
+
+BST_Delete(v)
+BEGIN
+  LOCAL curr, parent, child;
+  LOCAL isLeft, sParent, sCurr;
+
+  curr := bst_root;
+  parent := 0;
+  isLeft := 0;
+
+  // Find requested value.
+  WHILE curr <> 0 DO
+
+    IF bst_val(curr) == v THEN
+      BREAK;
+    END;
+
+    parent := curr;
+
+    IF v < bst_val(curr) THEN
+      curr := bst_left(curr);
+      isLeft := 1;
+    ELSE
+      curr := bst_right(curr);
+      isLeft := 0;
+    END;
+
+  END;
+
+  IF curr == 0 THEN
+    MSGBOX("Value not found.");
+    RETURN;
+  END;
+
+  // Case 1 and 2: zero or one child.
+  IF bst_left(curr) == 0 OR
+     bst_right(curr) == 0 THEN
+
+    IF bst_left(curr) <> 0 THEN
+      child := bst_left(curr);
+    ELSE
+      child := bst_right(curr);
+    END;
+
+    IF parent == 0 THEN
+      bst_root := child;
+    ELSE
+      IF isLeft == 1 THEN
+        bst_left(parent) := child;
+      ELSE
+        bst_right(parent) := child;
+      END;
+    END;
+
+    bst_used(curr) := 0;
+    bst_left(curr) := 0;
+    bst_right(curr) := 0;
+
+  ELSE
+
+    // Case 3: two children.
+    // Find the inorder successor.
+
+    sParent := curr;
+    sCurr := bst_right(curr);
+
+    WHILE bst_left(sCurr) <> 0 DO
+      sParent := sCurr;
+      sCurr := bst_left(sCurr);
+    END;
+
+    // Replace value with successor.
+    bst_val(curr) := bst_val(sCurr);
+
+    // Remove successor from old position.
+    IF sParent == curr THEN
+      bst_right(sParent) := bst_right(sCurr);
+    ELSE
+      bst_left(sParent) := bst_right(sCurr);
+    END;
+
+    bst_used(sCurr) := 0;
+    bst_left(sCurr) := 0;
+    bst_right(sCurr) := 0;
+
+  END;
+
+  bst_size := bst_size - 1;
+END;
+
+// -----------------------------------------------------
+// RECURSIVE INORDER LAYOUT
+// -----------------------------------------------------
+
+BST_Layout(idx, dep)
+BEGIN
+
+  IF idx == 0 THEN
+    RETURN;
+  END;
+
+  // Visit left subtree.
+  BST_Layout(bst_left(idx), dep + 1);
+
+  // Assign inorder horizontal position.
+  bst_rank := bst_rank + 1;
+
+  bst_pos(idx) := bst_rank;
+  bst_depth(idx) := dep;
+
+  IF dep > bst_maxDepth THEN
+    bst_maxDepth := dep;
+  END;
+
+  // Visit right subtree.
+  BST_Layout(bst_right(idx), dep + 1);
+
+END;
+
+// -----------------------------------------------------
+// DRAW ONE NODE
+// -----------------------------------------------------
+
+BST_DrawNode(x, y, v)
+BEGIN
+  LOCAL txt, offset;
+
+  txt := STRING(v);
+  offset := IP(DIM(txt) * 3);
+
+  // White interior.
+  RECT_P(
+    x-9, y-9,
+    x+9, y+9,
+    RGB(255,255,255),
+    RGB(255,255,255)
+  );
+
+  // Circular border.
+  ARC_P(x, y, 10);
+
+  // Node value.
+  TEXTOUT_P(
+    txt,
+    x-offset,
+    y-5,
+    1,
+    RGB(0,0,0),
+    40
+  );
+END;
+
+// -----------------------------------------------------
+// DRAW COMPLETE TREE
+// -----------------------------------------------------
+
+BST_DrawScreen()
+BEGIN
+  LOCAL i, j, count;
+
+  // Clear display.
+  RECT();
+
+  count := bst_size;
+
+  // Header.
+  TEXTOUT_P(
+    "BST Visualizer",
+    100, 3, 1,
+    RGB(0,0,0)
+  );
+
+  TEXTOUT_P(
+    STRING(count) + "/20 nodes",
+    5, 17, 1,
+    RGB(0,0,0)
+  );
+
+  IF bst_root == 0 THEN
+
+    bst_scroll := 0;
+
+    TEXTOUT_P(
+      "Tree is empty",
+      105, 110, 2,
+      RGB(0,0,0)
+    );
+
+  ELSE
+
+    // Calculate tree layout.
+    bst_rank := 0;
+    bst_maxDepth := 0;
+
+    BST_Layout(bst_root, 0);
+
+    // Clamp scrolling.
+    bst_scroll :=
+      MAX(0,MIN(bst_scroll,bst_maxDepth));
+
+    // Calculate node coordinates.
+    FOR i FROM 1 TO 20 DO
+
+      IF bst_used(i) == 1 THEN
+
+        IF bst_size == 1 THEN
+          bst_x(i) := 160;
+        ELSE
+          bst_x(i) := IP(
+            15 + (bst_pos(i)-1)*290/(bst_size-1)
+          );
+        END;
+
+        bst_y(i) :=
+          35 + (bst_depth(i)-bst_scroll)*34;
+
+      END;
+
+    END;
+
+    // Draw edges first.
+    FOR i FROM 1 TO 20 DO
+
+      IF bst_used(i) == 1 THEN
+
+        IF bst_left(i) <> 0 THEN
+          j := bst_left(i);
+
+          IF bst_y(i) >= 35 AND bst_y(i) <= 205
+             AND bst_y(j) >= 35 AND bst_y(j) <= 205 THEN
+
+            LINE_P(
+              bst_x(i),bst_y(i),
+              bst_x(j),bst_y(j),
+              RGB(0,0,0)
+            );
+
+          END;
+        END;
+
+        IF bst_right(i) <> 0 THEN
+          j := bst_right(i);
+
+          IF bst_y(i) >= 35 AND bst_y(i) <= 205
+             AND bst_y(j) >= 35 AND bst_y(j) <= 205 THEN
+
+            LINE_P(
+              bst_x(i),bst_y(i),
+              bst_x(j),bst_y(j),
+              RGB(0,0,0)
+            );
+
+          END;
+        END;
+
+      END;
+
+    END;
+
+    // Draw visible nodes over the lines.
+    FOR i FROM 1 TO 20 DO
+
+      IF bst_used(i) == 1 THEN
+
+        IF bst_y(i) >= 35 AND bst_y(i) <= 205 THEN
+
+          BST_DrawNode(
+            bst_x(i),
+            bst_y(i),
+            bst_val(i)
+          );
+
+        END;
+
+      END;
+
+    END;
+
+    TEXTOUT_P(
+      "Level " + STRING(bst_scroll),
+      247, 17, 1,
+      RGB(0,0,0)
+    );
+
+  END;
+
+  // Six touch targets.
+  DRAWMENU(
+    "Insert",
+    "Delete",
+    "Clear",
+    "Up",
+    "Down",
+    "Quit"
+  );
+END;
+
+// -----------------------------------------------------
+// PHYSICAL KEY PROBE
+// -----------------------------------------------------
+
+EXPORT BST_KeyProbe()
+BEGIN
+  LOCAL k;
+
+  RECT();
+
+  TEXTOUT_P(
+    "Press a physical key",
+    45, 50, 2,
+    RGB(0,0,0)
+  );
+
+  TEXTOUT_P(
+    "ESC exits",
+    75, 80, 2,
+    RGB(0,0,0)
+  );
+
+  REPEAT
+
+    k := GETKEY;
+
+    IF k >= 0 THEN
+      RECT();
+
+      TEXTOUT_P(
+        "Key code: " + STRING(k),
+        50, 95, 2,
+        RGB(0,0,0)
+      );
+
+      TEXTOUT_P(
+        "ESC exits",
+        75, 125, 2,
+        RGB(0,0,0)
+      );
+    END;
+
+    WAIT(0.05);
+
+  UNTIL k == 4;
+END;
+
+// -----------------------------------------------------
+// MAIN PROGRAM
+// -----------------------------------------------------
+
+EXPORT BSTVisualizer()
+BEGIN
+  LOCAL key, action, v, choice;
+  LOCAL touch, pt, touchType;
+  LOCAL wasTouch, dirty, tx, ty;
+
+  BST_Init();
+
+  wasTouch := 0;
+  dirty := 1;
+
+  WHILE 1 DO
+
+    // Redraw only when needed.
+    IF dirty == 1 THEN
+      BST_DrawScreen();
+      dirty := 0;
+    END;
+
+    action := 0;
+    key := GETKEY;
+
+    // Physical key controls.
+    IF key == 2 THEN
+      action := 4;
+    END;
+
+    IF key == 12 THEN
+      action := 5;
+    END;
+
+    IF key == 4 THEN
+      action := 6;
+    END;
+
+    // Touchscreen controls.
+    touch := MOUSE;
+
+    IF SIZE(touch) > 0 THEN
+
+      pt := touch(1);
+
+      IF SIZE(pt) >= 5 THEN
+
+        tx := pt(1);
+        ty := pt(2);
+        touchType := pt(5);
+
+        // A new touch can trigger only once.
+        IF touchType == 0 AND wasTouch == 0 THEN
+
+          wasTouch := 1;
+
+          IF tx >= 0 AND tx < 320
+             AND ty >= 220 AND ty < 240 THEN
+
+            action :=
+              1 + MIN(5,IP(tx*6/320));
+
+          END;
+
+        END;
+
+        // Completed touch releases the latch.
+        IF touchType == 1 THEN
+          wasTouch := 0;
+        END;
+
+      ELSE
+        wasTouch := 0;
+      END;
+
+    ELSE
+      wasTouch := 0;
+    END;
+
+    // ----------------------------------------------
+    // ACTION 1: INSERT
+    // ----------------------------------------------
+
+    IF action == 1 THEN
+
+      v := 0;
+
+      IF INPUT(v,"Insert node","Value") THEN
+
+        IF v == IP(v) AND
+           v >= -99 AND v <= 999 THEN
+
+          BST_Insert(v);
+
+        ELSE
+
+          MSGBOX(
+            "Enter an integer from -99 to 999."
+          );
+
+        END;
+
+      END;
+
+      dirty := 1;
+      wasTouch := 1;
+
+    END;
+
+    // ----------------------------------------------
+    // ACTION 2: DELETE
+    // ----------------------------------------------
+
+    IF action == 2 THEN
+
+      v := 0;
+
+      IF INPUT(v,"Delete node","Value") THEN
+
+        IF v == IP(v) THEN
+          BST_Delete(v);
+        ELSE
+          MSGBOX("Enter an integer value.");
+        END;
+
+      END;
+
+      dirty := 1;
+      wasTouch := 1;
+
+    END;
+
+    // ----------------------------------------------
+    // ACTION 3: CLEAR
+    // ----------------------------------------------
+
+    IF action == 3 THEN
+
+      choice := 2;
+
+      IF CHOOSE(
+        choice,
+        "Clear the tree?",
+        "Yes",
+        "No"
+      ) THEN
+
+        IF choice == 1 THEN
+          BST_Init();
+        END;
+
+      END;
+
+      dirty := 1;
+      wasTouch := 1;
+
+    END;
+
+    // ----------------------------------------------
+    // ACTION 4: SCROLL UP
+    // ----------------------------------------------
+
+    IF action == 4 THEN
+
+      bst_scroll := MAX(0,bst_scroll-1);
+      dirty := 1;
+
+    END;
+
+    // ----------------------------------------------
+    // ACTION 5: SCROLL DOWN
+    // ----------------------------------------------
+
+    IF action == 5 THEN
+
+      bst_scroll :=
+        MIN(bst_maxDepth,bst_scroll+1);
+
+      dirty := 1;
+
+    END;
+
+    // ----------------------------------------------
+    // ACTION 6: QUIT
+    // ----------------------------------------------
+
+    IF action == 6 THEN
+
+      choice := 2;
+
+      IF CHOOSE(
+        choice,
+        "Exit BST Visualizer?",
+        "Yes",
+        "No"
+      ) THEN
+
+        IF choice == 1 THEN
+          BREAK;
+        END;
+
+      END;
+
+      dirty := 1;
+      wasTouch := 1;
+
+    END;
+
+    WAIT(0.05);
+
+  END;
+
+  RETURN 0;
+END;
+

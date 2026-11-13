@@ -1,9 +1,15 @@
 # Packaging and the first public release
 
-The toolkit is **unpublished**. Building, packing and running a dry run do not
-authorize publication. Do not create the release tag, bootstrap npm packages or
-dispatch a publishing run until the maintainer explicitly approves that action.
-The README's unpublished notice remains until public installation checks succeed.
+**Publication blocked:** the original v0.1.0 bundle contains a retired internal
+document and fails the documentation publication gate. Preserve it unchanged;
+recovery requires a separate maintainer decision. See the gate below.
+
+The `v0.1.0` tag exists and all six npm packages were manually published from the
+successful dry-run bundle. The GitHub release and cross-platform public
+verification remain unfinished; use the one-time recovery below. Building,
+packing and running a dry run do not authorize publication. Further tags and npm
+publication require explicit maintainer approval. The README's unpublished notice
+remains until public installation checks succeed.
 
 ## Distribution layout
 
@@ -13,9 +19,9 @@ selected commit on `main`. Future versions change these values together.
 
 | Runner | Rust target | npm platform package |
 | --- | --- | --- |
-| Ubuntu 24.04 x64 | `x86_64-unknown-linux-musl` | `hp-prime-devkit-linux-x64` |
-| Ubuntu 24.04 ARM64 | `aarch64-unknown-linux-musl` | `hp-prime-devkit-linux-arm64` |
-| Windows x64 | `x86_64-pc-windows-msvc` | `hp-prime-devkit-win32-x64` |
+| Ubuntu 24.04 x64 | `x86_64-unknown-linux-gnu` | `hp-prime-devkit-linux-x64` |
+| Ubuntu 24.04 ARM64 | `aarch64-unknown-linux-gnu` | `hp-prime-devkit-linux-arm64` |
+| Windows Server 2022 build (Windows 10/11 target) | `x86_64-pc-windows-msvc` | `hp-prime-devkit-win32-x64` |
 | macOS 15 Apple Silicon | `aarch64-apple-darwin` | `hp-prime-devkit-darwin-arm64` |
 | macOS 15 Intel | `x86_64-apple-darwin` | `hp-prime-devkit-darwin-x64` |
 
@@ -25,10 +31,24 @@ the package version and executable SHA-256, forwards arguments and interrupts,
 and preserves exit status. npm verifies tarball integrity during installation.
 There is no postinstall hook, separate downloader or Rust build during npm install.
 
-Standalone `.tar.gz` downloads include the executable, examples, configuration,
+Standalone Windows `.zip` and Linux/macOS `.tar.gz` downloads include the executable, examples, configuration,
 documentation, notices, collected dependency licenses and a binary checksum
-manifest. They run without Rust or Node.js. GNU Linux builds remain useful for
-local development, but releases use musl; never mix GNU and musl artifacts.
+manifest. They run without Rust or Node.js. Desktop Linux packages target GNU/glibc and carry npm `libc: ["glibc"]`
+metadata. GUI execution needs an X11 or Wayland session and its runtime libraries
+(X11/XCB, XKB and/or Wayland). Software rendering requires no OpenGL.
+`--headless` does not initialize a display.
+
+Static musl remains a headless build option:
+
+```sh
+cargo build --locked --release --target x86_64-unknown-linux-musl --no-default-features --features web --bin hpdev
+```
+
+Use `--headless` or `--json` with that binary. It is not assembled into default
+desktop npm packages. Both musl architectures retain CI checks.
+The immutable original v0.1.0 recovery artifacts below retain their musl ABI;
+never rebuild or substitute them with desktop builds. Future publication needs
+a new coordinated package version.
 
 ## Install a standalone download after publication
 
@@ -38,12 +58,12 @@ exist before publication. Choose the target in the distribution table.
 On Linux x64 (no npm, Node or Rust needed):
 
 ```sh
-curl -fLO https://github.com/golba98/hp-prime-development-toolkit/releases/download/v0.1.0/hpdev-0.1.0-x86_64-unknown-linux-musl.tar.gz
-curl -fLO https://github.com/golba98/hp-prime-development-toolkit/releases/download/v0.1.0/hpdev-0.1.0-x86_64-unknown-linux-musl.tar.gz.sha256
-sha256sum -c hpdev-0.1.0-x86_64-unknown-linux-musl.tar.gz.sha256
-tar -xzf hpdev-0.1.0-x86_64-unknown-linux-musl.tar.gz
-./hpdev-0.1.0-x86_64-unknown-linux-musl/hpdev --version
-./hpdev-0.1.0-x86_64-unknown-linux-musl/hpdev --help
+curl -fLO https://github.com/golba98/hp-prime-development-toolkit/releases/download/v0.1.0/hpdev-0.1.0-x86_64-unknown-linux-gnu.tar.gz
+curl -fLO https://github.com/golba98/hp-prime-development-toolkit/releases/download/v0.1.0/hpdev-0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
+sha256sum -c hpdev-0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
+tar -xzf hpdev-0.1.0-x86_64-unknown-linux-gnu.tar.gz
+./hpdev-0.1.0-x86_64-unknown-linux-gnu/hpdev --version
+./hpdev-0.1.0-x86_64-unknown-linux-gnu/hpdev --help
 ```
 
 For Linux ARM64 substitute its target. On macOS choose the Intel or Apple Silicon
@@ -54,12 +74,13 @@ On Windows, download the MSVC archive and its sidecar with a browser or
 `Invoke-WebRequest`. In PowerShell, verify before extracting:
 
 ```powershell
-$archive = 'hpdev-0.1.0-x86_64-pc-windows-msvc.tar.gz'
+$version = 'VERSION' # Substitute the actual reviewed desktop release version.
+$archive = "hpdev-$version-x86_64-pc-windows-msvc.zip"
 $expected = (Get-Content "$archive.sha256").Split(' ')[0]
 if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Archive checksum mismatch' }
-tar -xzf $archive
-& .\hpdev-0.1.0-x86_64-pc-windows-msvc\hpdev.exe --version
-& .\hpdev-0.1.0-x86_64-pc-windows-msvc\hpdev.exe --help
+Expand-Archive -Path $archive -DestinationPath .
+& ".\hpdev-$version-x86_64-pc-windows-msvc\hpdev.exe" --version
+& ".\hpdev-$version-x86_64-pc-windows-msvc\hpdev.exe" --help
 ```
 
 The sidecar checks the individual download. The aggregate checksum file also
@@ -84,12 +105,12 @@ npm run test:browser
 A local Linux x64 release-artifact check is:
 
 ```sh
-rustup target add x86_64-unknown-linux-musl
-cargo test --locked --workspace --target x86_64-unknown-linux-musl
-cargo build --locked --release --target x86_64-unknown-linux-musl --bin hpdev
-node scripts/test-npm.mjs --target x86_64-unknown-linux-musl --binary target/x86_64-unknown-linux-musl/release/hpdev
-node scripts/package.mjs --target x86_64-unknown-linux-musl --binary target/x86_64-unknown-linux-musl/release/hpdev
-node scripts/verify-install.mjs local dist x86_64-unknown-linux-musl
+rustup target add x86_64-unknown-linux-gnu
+cargo test --locked --workspace --target x86_64-unknown-linux-gnu
+cargo build --locked --release --target x86_64-unknown-linux-gnu --bin hpdev
+node scripts/test-npm.mjs --target x86_64-unknown-linux-gnu --binary target/x86_64-unknown-linux-gnu/release/hpdev
+node scripts/package.mjs --target x86_64-unknown-linux-gnu --binary target/x86_64-unknown-linux-gnu/release/hpdev
+node scripts/verify-install.mjs local dist x86_64-unknown-linux-gnu
 ```
 
 Use the corresponding target and executable on other systems. The offline npm
@@ -107,8 +128,8 @@ third-party notices before distribution. Dependency pins remain unchanged.
 Ordinary CI and the manual release reuse the same five-platform build matrix.
 Each runner executes Rust formatting, release-helper regression tests, target
 Clippy, target Rust tests, no-default-features Clippy, a release build, the offline
-npm installation and standalone archive checks. Browser integration runs
-separately. Any failed target prevents distribution validation and publication;
+npm installation and standalone archive checks. Browser and native-window Xvfb integration run
+separately, alongside headless musl checks. Any failed target prevents distribution validation and publication;
 matrix jobs use `fail-fast: false` and report each platform's result.
 
 The manual workflow follows these gates:
@@ -268,6 +289,74 @@ release finalization.
 
 ## Later releases, retries and rollback limits
 
+### One-time v0.1.0 recovery from main
+
+Publishing run [43127309075](https://github.com/golba98/hp-prime-development-toolkit/actions/runs/43127309075)
+failed while checking the reused source run: the API returned
+`name: "Release v0.1.0 (dry run)"`, while the validator expected the static workflow
+name `Manual release`. Workflow identity now uses the workflow path plus event,
+completion status, tag branch, commit, repository and expected release title.
+Changing `main` cannot fix the workflow code already tagged as `v0.1.0`.
+
+After this fix merges, use **Recover v0.1.0 release**, dispatched from **main**.
+It accepts no inputs and uses the reviewed recovery code at the dispatch commit.
+Its immutable recovery pins are:
+
+| Item | Required value |
+| --- | --- |
+| Successful source dry run | `43124712655`, attempt 1, `release.yml` workflow ID `415260017` |
+| Artifact source commit | `435889a144b9cb011253eca51dc3c3916508e86c` |
+| Existing annotated tag | `v0.1.0`, object `ab4ac14fe58f8825f7f97793ceae1c23d25b45c0` |
+| Original `release-bundle` artifact | `13902762171` |
+| Original artifact ZIP SHA-256 | `f6d720f123433a450f1e3d53fd74fc1b78207d663cb8329a2bf9f39edfb9bfd1` |
+| Original manifest SHA-256 | `00452ea100e849ac7f74f7841d10c7aba717aac77cf030d51c1b97822af64c17` |
+
+The manifest fixture in `scripts/fixtures/v0.1.0-release-manifest.json` records
+the original manifest bytes for review and regression testing. The recovery
+checks the API run, attempt, artifact ID/digest/expiry and remote annotated tag
+before downloading that artifact by ID from the original run. It then checks
+the independently pinned manifest hash, every bundle file and all six existing
+npm `dist.integrity` values. Both the download action's ZIP digest check and the
+independently pinned manifest hash check are fatal on mismatch. Missing or different npm versions
+abort; this workflow has no npm upload command, npm publishing secret or OIDC
+permission. It never assembles or rebuilds release artifacts.
+
+All five native runners must install the existing exact public npm version and
+pass version, help, dependency-selection, binary checksum and SQUARE checks.
+Both draft staging and finalization use the **existing `npm-release` environment**.
+Staging attaches the exact original archives and checksums; existing assets must
+match byte-for-byte and are never overwritten. All five runners then download,
+verify and execute the actual draft archives. Only after those checks can the
+finalization job make the draft public. All five runners subsequently repeat
+public npm installation and unauthenticated GitHub archive checks. Jobs are
+serialized with the normal release workflow.
+
+The environment currently permits only tags matching `v*`, which blocks a
+workflow dispatched from `main`. Before recovery, a maintainer must add an
+**exact branch `main` deployment rule** to `npm-release`, keeping the `v*` tag rule
+and all other protections. Do not disable the environment, use an unrestricted
+branch rule or create a substitute environment. This PR does not change those
+repository settings. After reviewing and merging the fix and configuring that
+narrow rule, dispatch:
+
+```sh
+gh workflow run recover-v0.1.0.yml --ref main
+```
+
+Approve the existing environment gates where configured. A failed job can be
+retried with **Re-run failed jobs**; all reused files, registry integrities and
+existing release assets are checked again. A public release is never overwritten
+on retry. Do not rerun the broken tagged publishing workflow or move the tag.
+If the original artifact expires, stop; this workflow deliberately has no rebuild
+or alternative-artifact fallback.
+
+After **all five public verification jobs pass**, remove the temporary `main`
+deployment rule and delete this recovery workflow and helper in a follow-up PR.
+Only then update the README's unpublished notice. Keep the original tag, npm
+packages and bundle unchanged throughout recovery.
+
+### Normal release retries
+
 Bump the workspace version, development package/lockfile, launcher and all five
 optional dependencies together. Review/merge, obtain tag approval, create the tag,
 dry-run it, then reuse that reviewed bundle in the explicitly approved publish run.
@@ -324,3 +413,48 @@ Nothing in this workflow performs those actions automatically.
 - [ ] Public GitHub release has five archives, five sidecars, aggregate checksums and manifest.
 - [ ] All five final public npm and unauthenticated GitHub download checks pass.
 - [ ] Update the README's unpublished notice only in a subsequent reviewed change.
+
+## Documentation publication gate
+
+Run `npm run check:docs` and `npm run test:docs` before review or publication.
+Install optional repository-local commit/push checks with `npm run hooks:install`;
+the installer refuses to overwrite hooks or change configured hook paths.
+The documentation policy is in the [README](../README.md#documentation-contributions). New public Markdown
+requires an exact path and reader/purpose entry in the policy registry. Internal
+notes belong in ignored `.private/`, which is neither access control nor backup.
+Hooks can be bypassed and CI runs after a push: inspect outgoing changes first.
+
+The existing v0.1.0 bundle contains a retired internal document. Publication
+validation now rejects it, so the recovery procedure above is blocked pending a
+separate maintainer decision. Do not rebuild, modify checksums, move the tag, or
+bypass the gate to recover that version. Existing public copies remain public;
+this policy does not erase prior exposure or authorize changes to old releases.
+
+
+## Native release readiness
+
+Windows archives contain a native x86-64 `hpdev.exe`, the examples, notices and
+documentation. The executable embeds the Windows 10 compatibility,
+per-monitor-v2 DPI and asInvoker settings; administrator elevation is not requested.
+The MSVC runtime is linked statically, and `scripts/inspect_native.py` rejects
+unexpected redistributable DLL dependencies. Invoking hpdev in PowerShell keeps
+CLI logging and waits; private VM processes do not allocate another console.
+
+macOS ARM64 and Intel builds use `MACOSX_DEPLOYMENT_TARGET=11.0`. Inspection
+checks actual Mach-O architecture, deployment target and system-only dylibs.
+The archives preserve executable permissions. There is no Developer ID signing
+or notarization step and no signing credential is assumed. Gatekeeper handling
+for verified downloads is described in the README. A system-generated/ad-hoc
+signature is not Developer ID distribution signing or notarization.
+
+`scripts/native_zip.py` creates and validates Windows archives using Python's
+standard library during preparation/CI. End users can extract them with Explorer
+or PowerShell and need neither Python nor Rust to run hpdev.
+The existing checksums, exact bundle membership, pinned recovery manifest,
+documentation approval and publication protections apply to ZIPs as well.
+The original recovery bundle retains its original formats; it is never rebuilt.
+
+Runtime evidence is a separate release gate. A compile-only target check cannot
+certify a native GUI. Missing Windows interactive sessions or macOS permissions
+cause a failing native job with explicit unavailable evidence; configure a
+suitable logged-in runner before declaring that platform release-ready.

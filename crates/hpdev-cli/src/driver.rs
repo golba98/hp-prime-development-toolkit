@@ -15,6 +15,11 @@ use std::{
 };
 
 pub struct ViewOptions {
+    pub desktop: bool,
+    #[cfg_attr(not(feature = "desktop"), allow(dead_code))]
+    pub scale: u32,
+    #[cfg_attr(not(feature = "desktop"), allow(dead_code))]
+    pub show_keys: bool,
     pub tui: bool,
     pub debug: bool,
     pub web: bool,
@@ -62,6 +67,9 @@ impl ViewError {
 impl Default for ViewOptions {
     fn default() -> Self {
         Self {
+            desktop: false,
+            scale: 2,
+            show_keys: false,
             tui: false,
             debug: false,
             web: false,
@@ -74,6 +82,8 @@ impl Default for ViewOptions {
     }
 }
 pub struct Views {
+    #[cfg(feature = "desktop")]
+    desktop: Option<crate::desktop::Bridge>,
     terminal: Option<crate::tui::TerminalUi>,
     #[cfg(feature = "web")]
     browser: Option<crate::web::BrowserViewer>,
@@ -83,6 +93,8 @@ pub struct Views {
 impl Views {
     pub fn empty() -> Self {
         Self {
+            #[cfg(feature = "desktop")]
+            desktop: None,
             terminal: None,
             #[cfg(feature = "web")]
             browser: None,
@@ -132,8 +144,15 @@ impl Views {
         views.options = options;
         Ok(views)
     }
+    #[cfg(feature = "desktop")]
+    pub fn desktop(bridge: crate::desktop::Bridge) -> Self {
+        let mut views = Self::empty();
+        views.options.desktop = true;
+        views.desktop = Some(bridge);
+        views
+    }
     pub fn graphical(&self) -> bool {
-        self.options.tui || self.options.web
+        self.options.tui || self.options.web || self.options.desktop
     }
     fn ready(&self) -> bool {
         #[cfg(feature = "web")]
@@ -143,7 +162,11 @@ impl Views {
         true
     }
     pub fn apply(&mut self, event: &Event) -> Result<(), String> {
-        if matches!(event, Event::Frame { .. }) && self.graphical() {
+        #[cfg(feature = "desktop")]
+        if let Some(desktop) = &self.desktop {
+            desktop.apply(event)?;
+        }
+        if matches!(event, Event::Frame { .. }) && self.graphical() && !self.options.desktop {
             if let Some(last) = self.last_frame {
                 let wait = Duration::from_millis(33).saturating_sub(last.elapsed());
                 if !wait.is_zero() {
@@ -163,6 +186,10 @@ impl Views {
     }
     pub fn poll(&mut self) -> Result<Vec<Control>, String> {
         let mut commands = vec![];
+        #[cfg(feature = "desktop")]
+        if let Some(desktop) = &self.desktop {
+            commands.extend(desktop.poll());
+        }
         if let Some(ui) = &mut self.terminal {
             commands.extend(ui.poll()?);
         }
@@ -183,7 +210,7 @@ impl Views {
         }
     }
     pub fn metadata(&self) -> Value {
-        let data = json!({"terminal":self.options.tui,"browser":self.options.web});
+        let data = json!({"terminal":self.options.tui,"browser":self.options.web,"desktop":self.options.desktop});
         #[cfg(feature = "web")]
         {
             let mut data = data;
@@ -360,15 +387,20 @@ pub fn execute(
             std::thread::sleep(Duration::from_millis(20));
         }
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let mut child = Guard(
-            Command::new(exe)
-                .arg("__worker")
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::inherit())
-                .spawn()
-                .map_err(|e| e.to_string())?,
-        );
+        let mut command = Command::new(exe);
+        command
+            .arg("__worker")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            // Keep the CLI's inherited terminal handles; never create a second
+            // console for the private VM process.
+            command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        let mut child = Guard(command.spawn().map_err(|e| e.to_string())?);
         let mut input = child.0.stdin.take().ok_or("worker stdin unavailable")?;
         let mut output = child.0.stdout.take().ok_or("worker stdout unavailable")?;
         write_packet(&mut input, &request).map_err(|e| e.to_string())?;
@@ -556,7 +588,7 @@ pub fn execute(
                     views.apply(&event)?;
                     match event {
                         Event::Output { text } => {
-                            if !json_output && !views.graphical() {
+                            if !json_output && (!views.graphical() || views.options.desktop) {
                                 println!("{text}");
                             }
                         }

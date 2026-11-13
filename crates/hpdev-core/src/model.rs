@@ -21,7 +21,7 @@ pub struct Request {
     pub seed: u64,
     pub angle: String,
     pub max_time: Option<f64>,
-    pub max_steps: u64,
+    pub max_steps: Option<u64>,
     pub max_depth: usize,
     pub max_collection_len: usize,
     pub max_string_bytes: usize,
@@ -56,7 +56,7 @@ impl Default for Request {
             seed: 0x5eed,
             angle: "rad".into(),
             max_time: Some(30.0),
-            max_steps: 5_000_000,
+            max_steps: Some(5_000_000),
             max_depth: limits.max_depth,
             max_collection_len: limits.max_collection_len,
             max_string_bytes: limits.max_string_bytes,
@@ -178,6 +178,10 @@ pub struct DebugSnapshot {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Field {
+    #[serde(default)]
+    pub position: Option<(f64, f64, usize)>,
+    #[serde(default)]
+    pub string_only: bool,
     pub label: String,
     pub help: String,
     pub current: String,
@@ -187,6 +191,14 @@ pub struct Field {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DialogView {
+    #[serde(default)]
+    pub rows: usize,
+    #[serde(default)]
+    pub cols: usize,
+    #[serde(default)]
+    pub row_headers: Vec<String>,
+    #[serde(default)]
+    pub column_headers: Vec<String>,
     pub kind: String,
     pub title: String,
     pub message: String,
@@ -209,6 +221,13 @@ pub enum DialogResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Control {
+    Pause,
+    /// Persistent desktop contact; legacy Touch remains a one-shot event.
+    Pointer {
+        x: i64,
+        y: i64,
+        down: bool,
+    },
     Cancel,
     Debug {
         command: String,

@@ -6,6 +6,7 @@ export async function collectLicenses(root,output){
   const metadata=JSON.parse(execFileSync('cargo',['metadata','--locked','--format-version=1'],{cwd:root,encoding:'utf8',maxBuffer:32*1024*1024}));
   await fs.mkdir(output,{recursive:true});
   const inventory=[];
+  const desktopNotices=JSON.parse(await fs.readFile(path.join(root,'docs/licenses/desktop-notices.json'),'utf8'));
   for(const pkg of metadata.packages){
     if(pkg.name.startsWith('hpdev-'))continue;
     const directory=path.dirname(pkg.manifest_path);let candidates=[];
@@ -18,6 +19,10 @@ export async function collectLicenses(root,output){
     await scan(directory);
     if(pkg.license_file)candidates.push(path.resolve(directory,pkg.license_file));
     if(!candidates.length&&pkg.source?.startsWith('git+')){await scan(path.resolve(directory,'../..'));}
+    const desktopNotice=desktopNotices[pkg.name+'@'+pkg.version];
+    if(!candidates.length&&desktopNotice){
+      candidates.push(path.join(root,'docs/licenses',desktopNotice),path.join(root,'docs/licenses/MIT-terms.txt'));
+    }
     if(!candidates.length&&['block2','dispatch2','objc2','objc2-encode'].includes(pkg.name)){
       candidates.push(path.join(root,'docs/licenses',`${pkg.name}-${pkg.version}.txt`),path.join(root,'docs/licenses/MIT-terms.txt'));
     }
@@ -32,7 +37,13 @@ export async function collectLicenses(root,output){
     for(const [i,file]of candidates.entries()){const name=`${i}-${path.basename(file)}`;await fs.copyFile(file,path.join(destination,name));files.push(name);}
     inventory.push({name:pkg.name,version:pkg.version,license:pkg.license,authors:pkg.authors,source:pkg.source,files});
   }
-  await fs.cp(path.join(root,'docs/licenses'),path.join(output,'upstream-font'),{recursive:true});
+  const tracked=new Set(execFileSync('git',['ls-files','-z','--','docs/licenses'],{cwd:root,encoding:'utf8'}).split('\0').filter(Boolean));
+  await fs.cp(path.join(root,'docs/licenses'),path.join(output,'upstream-font'),{recursive:true,filter:async source=>{
+    if(source.split(path.sep).includes('.private'))return false;
+    const stat=await fs.lstat(source);
+    if(stat.isSymbolicLink())throw new Error('License input must not be a symlink');
+    return stat.isDirectory()||tracked.has(path.relative(root,source).split(path.sep).join('/'));
+  }});
   await fs.writeFile(path.join(output,'inventory.json'),JSON.stringify({note:'Locked dependency inventory, including optional, build and test dependencies; not all entries are linked into each binary.',packages:inventory},null,2)+'\n');
   return inventory.length;
 }

@@ -36,8 +36,8 @@ struct Cli {
 enum Command {
     /// Validate without executing. Compatibility limitations remain distinct.
     Check(Check),
-    /// Execute with the native Rust engine (scripted input by default).
-    Run(Run),
+    /// Run in a native interactive window; use --headless for automation.
+    Run(DesktopRun),
     /// Debug actual VM statements and inspect real values.
     Debug(Debug),
     /// Preview actual framebuffer updates in a terminal, PNG, or browser.
@@ -105,13 +105,14 @@ struct Run {
     seed: u64,
     #[arg(long, value_enum, default_value = "rad")]
     angle: Angle,
-    /// Total deadline, including input waits. Run defaults to 30s; debug has none.
+    /// Total deadline, including input waits. Headless run defaults to 30s; desktop/debug have none.
     #[arg(long, allow_hyphen_values = true)]
     max_time: Option<f64>,
     #[arg(long, conflicts_with = "max_time")]
     no_time_limit: bool,
-    #[arg(long, default_value_t = 5_000_000)]
-    max_steps: u64,
+    /// Instruction budget (headless default: 5000000; desktop: unlimited).
+    #[arg(long)]
+    max_steps: Option<u64>,
     #[arg(long, default_value_t = 1000)]
     max_depth: usize,
     #[arg(long, default_value_t = 1_000_000)]
@@ -123,6 +124,26 @@ struct Run {
     /// Allow terminal prompts after scripted input is exhausted.
     #[arg(long)]
     interactive: bool,
+}
+#[derive(Args)]
+struct DesktopRun {
+    #[command(flatten)]
+    run: Run,
+    /// Deterministic scripted execution without opening a window.
+    #[arg(long, conflicts_with = "gui")]
+    headless: bool,
+    /// Open a native window even with --json.
+    #[arg(long, conflicts_with = "interactive")]
+    gui: bool,
+    /// Initial integer display scale.
+    #[arg(long, default_value_t = 2, value_parser = clap::value_parser!(u32).range(1..=8))]
+    scale: u32,
+    /// Initially show the optional calculator keypad.
+    #[arg(long)]
+    show_keys: bool,
+    /// Close the window as soon as execution completes.
+    #[arg(long)]
+    exit_on_finish: bool,
 }
 #[derive(Args)]
 struct Debug {
@@ -245,14 +266,16 @@ impl Run {
         } else if let Some(s) = self.max_time {
             r.max_time = Some(s);
         }
-        r.max_steps = self.max_steps;
+        if let Some(steps) = self.max_steps {
+            r.max_steps = Some(steps);
+        }
         r.max_depth = self.max_depth;
         r.max_collection_len = self.max_collection_len;
         r.max_string_bytes = self.max_string_bytes;
         r.max_output_chars = self.max_output_chars;
         r.interactive = self.interactive;
         if r.max_time.is_some_and(|s| !s.is_finite() || s <= 0.)
-            || r.max_steps == 0
+            || r.max_steps == Some(0)
             || r.max_depth == 0
         {
             let mut report = Report::new(operation, Some(r.file));
@@ -270,7 +293,7 @@ impl Run {
 fn protected(command: &Command) -> Vec<PathBuf> {
     let source = match command {
         Command::Check(o) => Some(&o.source),
-        Command::Run(o) => Some(&o.source),
+        Command::Run(o) => Some(&o.run.source),
         Command::Debug(o) => Some(&o.run.source),
         Command::Preview(o) => Some(&o.run.source),
         Command::Watch(o) => Some(&o.run.source),
@@ -353,7 +376,7 @@ fn dispatch(cli: &Cli, cancel: &Arc<AtomicBool>) -> Report {
         Command::Doctor => {
             let mut r = Report::new("doctor", None);
             r.data = json!({"platform":format!("{}-{}",std::env::consts::OS,std::env::consts::ARCH),
-                "native_engine":true,"graphics_renderer":true,"browser_viewer":cfg!(feature="web"),
+                "native_engine":true,"graphics_renderer":true,"browser_viewer":cfg!(feature="web"),"desktop_viewer":cfg!(feature="desktop"),
                 "terminal":{"stdin_tty":io::stdin().is_terminal(),"stderr_tty":io::stderr().is_terminal(),"term":std::env::var("TERM").ok(),"colorterm":std::env::var("COLORTERM").ok()},
                 "upstream_revision":hpdev_core::UPSTREAM_REVISION,"firmware_required":false,"calculator_required":false});
             return r;
@@ -378,13 +401,33 @@ fn dispatch(cli: &Cli, cancel: &Arc<AtomicBool>) -> Report {
             r.deny_compatibility = o.deny_compatibility;
             (r, ViewOptions::default())
         }
-        Command::Run(o) => (
-            match o.request("run") {
+        Command::Run(o) => {
+            let mut r = match o.run.request("run") {
                 Ok(r) => r,
                 Err(e) => return *e,
-            },
-            ViewOptions::default(),
-        ),
+            };
+            let desktop = o.gui || !(o.headless || cli.json || o.run.interactive);
+            if desktop {
+                r.interactive = true;
+                r.emit_frames = true;
+                r.debug = true;
+                r.run_to_breakpoint = true;
+                if o.run.max_time.is_none() {
+                    r.max_time = None;
+                }
+                r.max_steps = o.run.max_steps;
+            }
+            (
+                r,
+                ViewOptions {
+                    desktop,
+                    scale: o.scale,
+                    show_keys: o.show_keys,
+                    exit_on_finish: o.exit_on_finish,
+                    ..Default::default()
+                },
+            )
+        }
         Command::Trace(o) => {
             let mut r = match o.run.request("trace") {
                 Ok(r) => r,
@@ -472,6 +515,16 @@ fn dispatch(cli: &Cli, cancel: &Arc<AtomicBool>) -> Report {
         );
         return report;
     }
+    if options.desktop {
+        #[cfg(feature = "desktop")]
+        return crate::desktop::run(request, options, cli.json, cli.quiet, cancel.clone());
+        #[cfg(not(feature = "desktop"))]
+        {
+            let mut report = Report::new(&request.operation, Some(request.file));
+            report.fail("unsupported", 8, "this build excludes the desktop viewer; use --headless or rebuild with the desktop feature");
+            return report;
+        }
+    }
     request.interactive |= options.tui || options.web;
     request.emit_frames = options.tui || options.web;
     if request.interactive && !options.web && !options.tui && !io::stdin().is_terminal() {
@@ -515,7 +568,9 @@ fn finish(mut report: Report, cli: &Cli) -> u8 {
     if cli.json {
         println!("{}", serde_json::to_string(&report).expect("report JSON"));
     } else {
-        print_diagnostics(&report);
+        if report.data["viewer"]["desktop"] != true {
+            print_diagnostics(&report);
+        }
         if !cli.quiet {
             if report.operation == "test" {
                 if let Some(cases) = report.data["cases"].as_array() {
@@ -708,7 +763,7 @@ fn watch(cli: &Cli, mut request: Request, views: &mut Views, cancel: &Arc<Atomic
     report
 }
 
-fn print_diagnostics(report: &Report) {
+pub(crate) fn print_diagnostics(report: &Report) {
     for d in &report.diagnostics {
         let position = d
             .location

@@ -3,14 +3,15 @@ name = "hpdev-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Standalone terminal HP Prime PPL developer toolkit"
+description = "Native desktop and terminal HP Prime PPL development toolkit"
 
 [[bin]]
 name = "hpdev"
 path = "src/main.rs"
 
 [features]
-default = ["web"]
+default = ["web", "desktop"]
+desktop = ["dep:winit", "dep:softbuffer", "dep:egui", "dep:ppl-vm"]
 web = ["dep:axum", "dep:tokio", "dep:futures-util", "dep:getrandom", "dep:open"]
 
 [dependencies]
@@ -30,6 +31,15 @@ futures-util = { version = "0.3", optional = true }
 getrandom = { version = "0.3", optional = true }
 open = { version = "5", optional = true }
 
+winit = { version = "0.30", optional = true }
+softbuffer = { version = "0.4", default-features = false, features = ["x11", "x11-dlopen", "wayland", "wayland-dlopen"], optional = true }
+egui = { version = "0.32", default-features = false, optional = true }
+ppl-vm = { workspace = true, optional = true }
+
 [dev-dependencies]
+ppl-engine.workspace = true
 portable-pty = "0.9"
 tungstenite = "0.29"
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+x11rb = { version = "0.13", features = ["xtest"] }
