@@ -5,3 +5,15 @@
 *.tgz
 /test-results/
 /playwright-report/
+
+# Private notes and local agent entrypoints; never force-add.
+/.agents/scratch/
+/.agents/teamwork/
+/.private/
+/docs/_reports/
+/docs/tmp/
+/release-bundle/
+[Aa][Gg][Ee][Nn][Tt][Ss].[Mm][Dd]
+[Aa][Gg][Ee][Nn][Tt][Ss].[Oo][Vv][Ee][Rr][Rr][Ii][Dd][Ee].[Mm][Dd]
+[Cc][Ll][Aa][Uu][Dd][Ee].[Mm][Dd]
+[Gg][Ee][Mm][Ii][Nn][Ii].[Mm][Dd]

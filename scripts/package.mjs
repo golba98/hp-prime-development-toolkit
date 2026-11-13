@@ -5,7 +5,21 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { collectLicenses } from './licenses.mjs';
+import { checkPaths, policy } from './check-docs.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+// Validate documentation inputs before assembling public packages.
+execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), [path.join(root, 'scripts/check_documentation.py'), '--root', root, '--package-source'], {stdio: ['ignore', 2, 2]});
+const tracked = new Set(execFileSync('git', ['ls-files', '-z'], {cwd: root, encoding: 'utf8'}).split('\0').filter(Boolean));
+const approved = new Set([...tracked, ...Object.keys(policy.publicMarkdown)]);
+const copyOptions = {recursive: true, filter: async source => {
+  const relative = path.relative(root, source).split(path.sep).join('/');
+  if (relative.split('/').includes('.private') || /^(?:agents(?:\.override)?|claude|gemini)\.md$/i.test(path.posix.basename(relative))) return false;
+  const status = await fs.lstat(source);
+  if (status.isSymbolicLink()) throw new Error(`Publication input is a symlink: ${relative}`);
+  if (status.isDirectory()) return true;
+  if (!approved.has(relative)) return false;
+  checkPaths([relative]); return true;
+}};
 async function readableTree(directory){
   await fs.chmod(directory,0o755);
   for(const entry of await fs.readdir(directory,{withFileTypes:true})){
@@ -29,11 +43,11 @@ if(metadata.version!==cargoVersion||Object.values(metadata.optionalDependencies)
 const licenseDirectory=path.join(output,'licenses');
 await collectLicenses(root,licenseDirectory);
 const rootPackage=path.join(output,'npm',metadata.name),name=`hp-prime-devkit-${os}-${cpu}`,platformPackage=path.join(output,'npm',name);
-await fs.mkdir(rootPackage,{recursive:true});await fs.cp(path.join(root,'npm'),rootPackage,{recursive:true});
+await fs.mkdir(rootPackage,{recursive:true});await fs.cp(path.join(root,'npm'),rootPackage,copyOptions);
 for(const file of ['README.md','LICENSE','THIRD_PARTY_NOTICES.md'])await fs.copyFile(path.join(root,file),path.join(rootPackage,file));
-await fs.cp(path.join(root,'examples'),path.join(rootPackage,'examples'),{recursive:true});
-await fs.cp(path.join(root,'docs'),path.join(rootPackage,'docs'),{recursive:true});
-await fs.cp(path.join(root,'tests'),path.join(rootPackage,'tests'),{recursive:true});
+await fs.cp(path.join(root,'examples'),path.join(rootPackage,'examples'),copyOptions);
+await fs.cp(path.join(root,'docs'),path.join(rootPackage,'docs'),copyOptions);
+await fs.cp(path.join(root,'tests'),path.join(rootPackage,'tests'),copyOptions);
 await fs.copyFile(path.join(root,'hpdev.toml'),path.join(rootPackage,'hpdev.toml'));
 await readableTree(rootPackage);await fs.chmod(path.join(rootPackage,'bin/hpdev.cjs'),0o755);
 await fs.mkdir(path.join(platformPackage,'bin'),{recursive:true});
@@ -48,9 +62,9 @@ await readableTree(platformPackage);if(os!=='win32')await fs.chmod(destination,0
 const nativeDirectory=path.join(output,`hpdev-${metadata.version}-${target}`);await fs.mkdir(nativeDirectory,{recursive:true});
 await fs.copyFile(destination,path.join(nativeDirectory,executable));if(os!=='win32')await fs.chmod(path.join(nativeDirectory,executable),0o755);
 for(const file of ['README.md','LICENSE','THIRD_PARTY_NOTICES.md'])await fs.copyFile(path.join(root,file),path.join(nativeDirectory,file));
-await fs.cp(licenseDirectory,path.join(nativeDirectory,'licenses'),{recursive:true});await fs.cp(path.join(root,'examples'),path.join(nativeDirectory,'examples'),{recursive:true});
-await fs.cp(path.join(root,'docs'),path.join(nativeDirectory,'docs'),{recursive:true});
-await fs.cp(path.join(root,'tests'),path.join(nativeDirectory,'tests'),{recursive:true});
+await fs.cp(licenseDirectory,path.join(nativeDirectory,'licenses'),{recursive:true});await fs.cp(path.join(root,'examples'),path.join(nativeDirectory,'examples'),copyOptions);
+await fs.cp(path.join(root,'docs'),path.join(nativeDirectory,'docs'),copyOptions);
+await fs.cp(path.join(root,'tests'),path.join(nativeDirectory,'tests'),copyOptions);
 await fs.copyFile(path.join(root,'hpdev.toml'),path.join(nativeDirectory,'hpdev.toml'));
 await fs.writeFile(path.join(nativeDirectory,'SHA256SUMS'),`${digest}  ${executable}\n`);
 await readableTree(nativeDirectory);if(os!=='win32')await fs.chmod(path.join(nativeDirectory,executable),0o755);
