@@ -1,4 +1,6 @@
 mod cli;
+#[cfg(feature = "desktop")]
+mod desktop;
 mod driver;
 mod tui;
 #[cfg(feature = "web")]

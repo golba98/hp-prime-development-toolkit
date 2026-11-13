@@ -3,12 +3,12 @@
     "docs/implementation-report.md"
   ],
   "publicMarkdown": {
-    "README.md": "Public technical documentation, installation, usage or attribution",
-    "THIRD_PARTY_NOTICES.md": "Public technical documentation, installation, usage or attribution",
-    "docs/architecture.md": "Public technical documentation, installation, usage or attribution",
-    "docs/json-api.md": "Public technical documentation, installation, usage or attribution",
-    "docs/packaging.md": "Public technical documentation, installation, usage or attribution",
-    "docs/testing.md": "Public technical documentation, installation, usage or attribution",
-    "tests/fixtures/README.md": "Public technical documentation, installation, usage or attribution"
+    "README.md": "Users and contributors: installation, usage, limitations and development",
+    "THIRD_PARTY_NOTICES.md": "Distributors: required attribution and licence terms",
+    "docs/architecture.md": "Contributors: architecture and design constraints",
+    "docs/json-api.md": "Automation users: versioned JSON interface",
+    "docs/testing.md": "Users and contributors: reproducible assertions and test methods",
+    "docs/packaging.md": "Maintainers: packaging and protected release workflows",
+    "tests/fixtures/README.md": "Contributors: fixture provenance"
   }
 }

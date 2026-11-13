@@ -177,7 +177,7 @@ fn precise_math_and_collection_semantics_come_from_upstream() {
 fn instruction_and_trace_limits_are_failures() {
     let (r, _) = run(Request {
         file: "tests/fixtures/LOOP.ppl".into(),
-        max_steps: 1024,
+        max_steps: Some(1024),
         ..Default::default()
     });
     assert_eq!(r.exit_code, 6);

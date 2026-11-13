@@ -32,6 +32,8 @@ pub struct InputState {
     rx: Receiver<Control>,
     pub cancel: Arc<AtomicBool>,
     pub commands: VecDeque<String>,
+    pub pause_requested: bool,
+    pointer: Option<Touch>,
     keys: VecDeque<i64>,
     down: BTreeMap<i64, Option<Instant>>,
     touch: Option<Touch>,
@@ -45,6 +47,8 @@ impl InputState {
             rx,
             cancel,
             commands: VecDeque::new(),
+            pause_requested: false,
+            pointer: None,
             keys: VecDeque::new(),
             down: BTreeMap::new(),
             touch: None,
@@ -58,6 +62,16 @@ impl InputState {
             return;
         }
         match command {
+            Control::Pause => self.pause_requested = true,
+            Control::Pointer { x, y, down } => {
+                self.pointer = down.then_some(Touch {
+                    x: x.clamp(0, 319),
+                    y: y.clamp(0, 239),
+                });
+                if down {
+                    self.touch = self.pointer;
+                }
+            }
             Control::Cancel => {
                 self.cancel.store(true, Ordering::Release);
             }
@@ -235,7 +249,7 @@ impl Host for ToolkitHost {
         }
         let mut input = self.input.borrow_mut();
         input.pump()?;
-        Ok(input.touch.take())
+        Ok(input.touch.take().or(input.pointer))
     }
     fn dialog(&mut self, dialog: &Dialog, screen: &Grob) -> Result<DialogResult, RuntimeError> {
         let has_script = match dialog {
@@ -313,6 +327,10 @@ impl Host for ToolkitHost {
 
 fn dialog_view(dialog: &Dialog) -> DialogView {
     let mut view = DialogView {
+        rows: 0,
+        cols: 0,
+        row_headers: vec![],
+        column_headers: vec![],
         kind: String::new(),
         title: String::new(),
         message: String::new(),
@@ -350,6 +368,10 @@ fn dialog_view(dialog: &Dialog) -> DialogView {
             view.fields = fields
                 .iter()
                 .map(|f| Field {
+                    position: f
+                        .position
+                        .map(|p| (p.start_percent, p.width_percent, p.line)),
+                    string_only: f.string_only,
                     label: f.label.clone(),
                     help: f.help.clone(),
                     current: f.current.clone(),
@@ -360,6 +382,10 @@ fn dialog_view(dialog: &Dialog) -> DialogView {
         }
         Dialog::Matrix(matrix) => {
             view.kind = "matrix".into();
+            view.rows = matrix.rows;
+            view.cols = matrix.cols;
+            view.row_headers = matrix.row_headers.clone();
+            view.column_headers = matrix.column_headers.clone();
             view.title = matrix.title.clone();
             view.error = matrix.error.clone();
             view.focus = matrix.focus;
@@ -369,6 +395,8 @@ fn dialog_view(dialog: &Dialog) -> DialogView {
                 .iter()
                 .enumerate()
                 .map(|(i, s)| Field {
+                    position: None,
+                    string_only: false,
                     label: format!("[{},{}]", i / matrix.cols + 1, i % matrix.cols + 1),
                     help: String::new(),
                     current: s.clone(),

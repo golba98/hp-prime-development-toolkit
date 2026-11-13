@@ -1,7 +1,7 @@
 # Architecture and development
 
 `hpdev-cli` owns Clap commands, supervised worker processes, Ratatui/Crossterm
-presentation and the optional Axum browser viewer. `hpdev-core` owns request
+presentation, a default native Winit/Softbuffer desktop viewer, and the optional Axum browser viewer. `hpdev-core` owns request
 and report types, compiler/VM orchestration, host adaptation, debugger controls
 and test assertions. No parser, compiler, arithmetic implementation, VM or
 graphics engine is duplicated.
@@ -37,7 +37,7 @@ query `locals`, `globals_for_frame` and `call_stack_frames` while that frame
 exists. Step-over/out compare actual depths. Error traces come from
 `RuntimeError`; no values or stepping are synthesized.
 
-PNG, terminal and browser rendering share native G0 pixels or the upstream
+Desktop, PNG, terminal and browser rendering share native G0 pixels or the upstream
 PRINT rasterization. Dialog controls are a separate host presentation layer.
 The browser accepts only authenticated loopback input/control, never programs
 or filesystem paths. Its viewer protocol is private and may change; the
@@ -58,3 +58,37 @@ The upstream linker returns text rather than structured diagnostics on failed
 module linking. Those failures carry a `module-link` diagnostic with no
 invented source span; successful linked modules retain their normal typed
 diagnostics and source identities.
+
+Dialog field positions and custom matrix headers are not reproduced by toolkit
+controls. This is an explicit native-host limitation, not firmware pixel parity.
+
+
+The desktop main thread owns the native window and software surface. Once the
+surface is initialized, a background supervisor uses the same isolated worker,
+bounded event stream, deadlines and cancellation path as other views.
+Desktop input crosses the private control protocol; idle GETKEY returns -1.
+Persistent pointer contacts coexist with legacy one-shot touches; focus loss
+releases held calculator keys.
+
+The desktop adapter reuses the pinned emulator's scaler, key mapping and modal
+dialogs under `crates/hpdev-cli/src/desktop/upstream`. `provenance.json` records
+their revision and hashes. Rust module paths are adapted; no local Cargo patch
+is needed. The whole upstream GUI crate is not linked because it also includes
+device and IDE layers. The toolkit retains process supervision and its statement
+debugger. Desktop runs attach that debugger in continue mode without tracing.
+Pause stops at the next statement callback; blocked host calls must return
+before a new snapshot is possible.
+
+
+Desktop platform policy is isolated in `desktop/platform.rs»: AppKit activation
+runs on the main thread, macOS Command accelerators bypass calculator mappings,
+and layout converts logical control dimensions to physical display pixels.
+The VM, dialogs, debugger, worker protocol and execution limits remain shared.
+Occluded/minimized windows continue pumping controls; cancellation and completion
+do not depend on receiving another paint callback. The Windows executable keeps
+its calling terminal, while its private worker uses CREATE_NO_WINDOW.
+
+Windows MSVC builds embed a per-monitor-v2/asInvoker manifest and statically
+link the MSVC runtime. Native binary inspection checks these properties.
+macOS builds target a common deployment baseline and inspect Mach-O architecture,
+minimum version and system-framework dependencies without claiming signing.

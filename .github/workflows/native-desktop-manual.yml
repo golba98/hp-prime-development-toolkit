@@ -1,0 +1,48 @@
+name: Native desktop session validation
+on:
+  workflow_dispatch:
+    inputs:
+      runner_labels:
+        description: JSON labels for a dedicated logged-in Windows 10/11 or macOS GUI runner
+        required: true
+        default: '["self-hosted","hpdev-gui"]'
+        type: string
+      python:
+        description: Python executable installed on the runner
+        type: choice
+        options: [python3, python]
+        default: python3
+permissions:
+  contents: read
+jobs:
+  native-session:
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    env:
+      PYTHON: ${{ inputs.python }}
+      PYTHONDONTWRITEBYTECODE: '1'
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - run: '"$PYTHON" scripts/ci_capture.py test-results/ci/rust.log -- cargo test --locked --workspace'
+      - run: cargo build --locked --bin hpdev
+      - name: Actual native desktop tests
+        run: |
+          "$PYTHON" -B - <<'PY'
+          import os, subprocess, sys
+          binary='target/debug/hpdev'+('.exe' if os.name=='nt' else '')
+          sys.exit(subprocess.call([sys.executable,'-B','scripts/native_gui/run.py','--binary',binary,'--artifacts','test-results/native']))
+          PY
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: native-desktop-session-evidence
+          path: |
+            test-results/native/
+            test-results/ci/
+            !test-results/**/.private/**

@@ -30,13 +30,13 @@
     "scripts/package.mjs"
   ],
   "public_markdown": {
-    "README.md": "43af9d5fb17801e02da9c09359f28f76febe26729e3e53d168ff6f4d0a9d2a33",
-    "THIRD_PARTY_NOTICES.md": "022bb7a8dca4fe09b75193f7111000c03307e26d115c107e0f99bda6b68b881f",
-    "docs/architecture.md": "211ee640b2fede8a5d2ae5852195429079479f5bde57bc1bf1c1796199d89128",
-    "docs/json-api.md": "677f50c70c68c1c825e76d590b88040ad88675f91d0af5b4cc4f94ff2b853863",
-    "docs/packaging.md": "df3e6b6f9f788b7ee1bc53756aa05915ee7fed10b5ae0257598987e6ed34d6b0",
-    "docs/testing.md": "3088436d206dce3293bb22d9c97e24b76099ef13c5f15479e4c84932bf0706a8",
-    "tests/fixtures/README.md": "4d2a3c13e55abceef776bfa12d7dbec698cdb047011c98c854d25590ce3a1171"
+    "README.md": "9ad58ed5f9b2d2470ade408c9a88f64b5857e988cc67705067193c50f29b0560",
+    "THIRD_PARTY_NOTICES.md": "508057466d63deec10c50e2bbec9bc71ed5f969974e0ca55ffe3b6d81187dd3d",
+    "docs/architecture.md": "e9121e0d2c5e04bd3c602b640b6cc60ffb7dafc79b79b879bb6c9ccb9de52b60",
+    "docs/json-api.md": "91b1a87d28bdbb4f29ecb5b082a4c7939327876e04d3543b5a414bbd9be8b76e",
+    "docs/packaging.md": "7b28c801563832dab353f8b06abf8806dde427264a37547edd312c2f30d47637",
+    "docs/testing.md": "16aa550ef9c55baab7ed7f900bfc5d4b32bf7418ba4b4a8c7fbb7a0695624c22",
+    "tests/fixtures/README.md": "56ec9349fa2d9dfbe3380c832f9dbad4efadd7b5c0d6f71f3f97afd9c8e44b2a"
   },
   "repository": "golba98/hp-prime-development-toolkit",
   "version": 1

@@ -373,7 +373,7 @@ fn execute_inner(
         max_output: request.max_output_chars,
     };
     let limits = Limits {
-        max_steps: Some(request.max_steps),
+        max_steps: request.max_steps,
         max_time: request
             .max_time
             .and_then(|s| Duration::try_from_secs_f64(s).ok()),

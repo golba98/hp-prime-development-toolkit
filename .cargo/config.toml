@@ -1,0 +1,4 @@
+# Windows standalone executables carry the MSVC runtime instead of requiring a
+# separately installed Visual C++ redistributable. OS DLLs remain system supplied.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

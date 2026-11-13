@@ -6,13 +6,13 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { platforms, metadata, validateBundle, inspectPackage, inspectNative } from './release.mjs';
+import { platforms, legacyPlatforms, isMuslBundle, metadata, validateBundle, inspectPackage, inspectNative, nativeArchiveName } from './release.mjs';
 
 const registry = 'https://registry.npmjs.org';
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 function ensure(value, message) { if (!value) throw new Error(message); }
 function currentPlatform(target = process.env.RELEASE_TARGET) {
-  const platform = platforms.find(([name, os, cpu]) => target ? name === target : os === process.platform && cpu === process.arch);
+  const platform = [...platforms, ...legacyPlatforms].find(([name, os, cpu]) => target ? name === target : os === process.platform && cpu === process.arch);
   ensure(platform && platform[1] === process.platform && platform[2] === process.arch, `Wrong or unsupported runner: ${target} on ${process.platform}/${process.arch}`);
   return platform;
 }
@@ -40,7 +40,7 @@ export async function verifyNpm(bundle) {
     const pkg = JSON.parse(await fs.readFile(selected, 'utf8'));
     ensure(pkg.name === name && pkg.version === manifest.version && pkg.os?.[0] === platform && pkg.cpu?.[0] === cpu, 'Wrong native optional dependency selected');
     const expected = manifest.npm.find(entry => entry.name === name);
-    const hash = inspectPackage(path.join(bundle, expected.file), { name, version: manifest.version, os: platform, cpu });
+    const hash = inspectPackage(path.join(bundle, expected.file), { name, version: manifest.version, os: platform, cpu, legacyMusl: isMuslBundle(manifest) });
     const executable = path.join(path.dirname(selected), 'bin', platform === 'win32' ? 'hpdev.exe' : 'hpdev');
     ensure(sha256(await fs.readFile(executable)) === hash, 'Public native binary differs from the reviewed package');
     const shim = path.join(directory, ...(process.platform === 'win32' ? ['hpdev.cmd'] : ['bin', 'hpdev']));
@@ -56,7 +56,9 @@ async function executeArchive(file, { target, version, sha256: expectedHash, bin
   inspectNative(file, version, target, platform, binaryHash);
   const directory = await fs.mkdtemp(path.join(hostOS.tmpdir(), 'hpdev-native-install-'));
   try {
-    run('tar', ['-xzf', file, '-C', directory], directory);
+    if(file.endsWith('.zip')) run(process.env.PYTHON || (process.platform==='win32'?'python':'python3'),
+      [fileURLToPath(new URL('./native_zip.py',import.meta.url)),'extract',file,directory],directory);
+    else run('tar', ['-xzf', file, '-C', directory], directory);
     const base = path.join(directory, `hpdev-${version}-${target}`);
     const executable = path.join(base, platform === 'win32' ? 'hpdev.exe' : 'hpdev');
     ensure(sha256(await fs.readFile(executable)) === binaryHash, 'Extracted executable checksum differs');
@@ -70,7 +72,7 @@ export async function verifyLocalNative(directory, target) {
   currentPlatform(target);
   const pkg = await metadata();
   const [, os, cpu] = currentPlatform(target);
-  const file = path.resolve(directory, `hpdev-${pkg.version}-${target}.tar.gz`);
+  const file = path.resolve(directory, nativeArchiveName(pkg.version,target));
   const checksum = await fs.readFile(file + '.sha256', 'utf8');
   const hash = sha256(await fs.readFile(file));
   ensure(checksum === `${hash}  ${path.basename(file)}\n`, 'Local archive checksum differs');
@@ -81,10 +83,10 @@ export async function verifyLocalNative(directory, target) {
 export async function verifyNative(bundle, { publicRelease = false, download } = {}) {
   const manifest = await validateBundle(bundle);
   const [target, os, cpu] = currentPlatform();
-  const entry = manifest.native.find(entry => entry.file === `hpdev-${manifest.version}-${target}.tar.gz`);
+  const entry = manifest.native.find(entry => entry.file === nativeArchiveName(manifest.version,target,isMuslBundle(manifest)));
   const name = `hp-prime-devkit-${os}-${cpu}`;
   const npm = manifest.npm.find(entry => entry.name === name);
-  const binaryHash = inspectPackage(path.join(bundle, npm.file), { name, version: manifest.version, os, cpu });
+  const binaryHash = inspectPackage(path.join(bundle, npm.file), { name, version: manifest.version, os, cpu, legacyMusl: isMuslBundle(manifest) });
   const directory = await fs.mkdtemp(path.join(hostOS.tmpdir(), 'hpdev-release-download-'));
   try {
     if (download) await download(directory, entry.file);

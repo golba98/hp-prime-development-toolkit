@@ -13,17 +13,20 @@ permissions:
   contents: read
 jobs:
   native:
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+      PYTHON: ${{ startsWith(matrix.os, 'windows') && 'python' || 'python3' }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-24.04
-            target: x86_64-unknown-linux-musl
+            target: x86_64-unknown-linux-gnu
             executable: hpdev
           - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-musl
+            target: aarch64-unknown-linux-gnu
             executable: hpdev
-          - os: windows-latest
+          - os: windows-2022
             target: x86_64-pc-windows-msvc
             executable: hpdev.exe
           - os: macos-15
@@ -48,11 +51,19 @@ jobs:
           package-manager-cache: false
       - run: npm install --global npm@11.21.0 --ignore-scripts
       - run: cargo fmt --all -- --check
+      - run: npm run test:docs
       - run: node --test scripts/release.test.mjs
+      - run: ${{ env.PYTHON }} -B scripts/test_native_zip.py
       - run: cargo clippy --locked --workspace --all-targets --target ${{ matrix.target }} -- -D warnings
-      - run: cargo test --locked --workspace --target ${{ matrix.target }}
+      - name: Rust unit, CLI, headless and JSON regressions
+        shell: bash
+        run: ${{ env.PYTHON }} scripts/ci_capture.py test-results/ci/rust-tests.log -- cargo test --locked --workspace --target ${{ matrix.target }}
       - run: cargo clippy --locked --workspace --all-targets --target ${{ matrix.target }} --no-default-features -- -D warnings
       - run: cargo build --locked --release --target ${{ matrix.target }} --bin hpdev
+      - run: npm run check:docs
+      - name: Inspect architecture, runtime dependencies and platform manifest
+        shell: bash
+        run: ${{ env.PYTHON }} scripts/inspect_native.py --target ${{ matrix.target }} --binary target/${{ matrix.target }}/release/${{ matrix.executable }} --output test-results/ci/binary-linkage.json
       - name: Isolated offline npm installation
         run: node scripts/test-npm.mjs --target ${{ matrix.target }} --binary target/${{ matrix.target }}/release/${{ matrix.executable }}
       - name: Assemble native and npm artifacts (no publication)
@@ -70,9 +81,18 @@ jobs:
           name: hpdev-${{ matrix.target }}
           path: |
             dist/*.tar.gz
+            dist/*.zip
             dist/*.sha256
             dist/*.tgz
           if-no-files-found: error
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: native-logs-${{ matrix.target }}
+          path: |
+            test-results/ci/
+            !test-results/**/.private/**
+          if-no-files-found: ignore
   browser:
     runs-on: ubuntu-24.04
     steps:
@@ -93,9 +113,104 @@ jobs:
         if: always()
         with:
           name: browser-test-results
-          path: test-results/
+          path: |
+            test-results/
+            !test-results/**/.private/**
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            executable: hpdev
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            executable: hpdev.exe
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+            executable: hpdev.exe
+          - os: macos-15
+            target: aarch64-apple-darwin
+            executable: hpdev
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            executable: hpdev
+    runs-on: ${{ matrix.os }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+      PYTHON: ${{ startsWith(matrix.os, 'windows') && 'python' || 'python3' }}
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: ${{ matrix.target }}
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libxtst6 libx11-6 libx11-xcb1 libxcb1 libxkbcommon0 libxkbcommon-x11-0 libwayland-client0
+      - run: cargo build --locked --target ${{ matrix.target }} --bin hpdev
+      - name: Existing Linux native integration
+        if: runner.os == 'Linux'
+        run: xvfb-run -a -s "-screen 0 1800x1400x24" cargo test --locked -p hpdev-cli --test desktop -- --ignored --test-threads=1
+      - name: Native launch, OS input, pixels, BST and debugger (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a -s "-screen 0 1800x1400x24" python3 -B scripts/native_gui/run.py --binary target/${{ matrix.target }}/debug/${{ matrix.executable }} --artifacts test-results/native
+      - name: High-DPI native X11 interaction
+        if: runner.os == 'Linux'
+        env:
+          WINIT_X11_SCALE_FACTOR: '2'
+        run: xvfb-run -a -s "-screen 0 3000x2400x24" python3 -B scripts/native_gui/run.py --binary target/${{ matrix.target }}/debug/${{ matrix.executable }} --artifacts test-results/native/high-dpi
+      - name: Native launch, OS input, pixels, BST and debugger (Windows/macOS)
+        if: runner.os != 'Linux'
+        shell: bash
+        run: ${{ env.PYTHON }} -B scripts/native_gui/run.py --binary target/${{ matrix.target }}/debug/${{ matrix.executable }} --artifacts test-results/native
+      - name: Report real OS evidence
+        if: always()
+        shell: bash
+        run: |
+          ${{ env.PYTHON }} - <<'PYTHON'
+          import os
+          from pathlib import Path
+          status=Path('test-results/native/status.json')
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as summary:
+              summary.write('Native desktop evidence for ${{ matrix.os }}: '+(status.read_text() if status.exists() else 'NOT TESTED: no runtime result')+'\n')
+          PYTHON
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: desktop-evidence-${{ matrix.os }}
+          path: |
+            test-results/native/
+            !test-results/**/.private/**
+          if-no-files-found: warn
+  musl:
+    env:
+      PYTHON: python3
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Rust unit, CLI, headless and JSON regressions
+        shell: bash
+        run: ${{ env.PYTHON }} scripts/ci_capture.py test-results/ci/rust-tests.log -- cargo test --locked --workspace --target ${{ matrix.target }} --no-default-features --features web
+      - run: cargo build --locked --release --target ${{ matrix.target }} --no-default-features --features web --bin hpdev
   distribution:
-    needs: [native, browser]
+    needs: [native, browser, desktop, musl]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6

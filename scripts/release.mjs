@@ -1,5 +1,6 @@
 // Release validation and publication. Only the explicit `publish` command writes to npm.
 import fs from 'node:fs/promises';
+import { checkPaths } from './check-docs.mjs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -7,12 +8,19 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const platforms = [
-  ['x86_64-unknown-linux-musl', 'linux', 'x64'],
-  ['aarch64-unknown-linux-musl', 'linux', 'arm64'],
+  ['x86_64-unknown-linux-gnu', 'linux', 'x64'],
+  ['aarch64-unknown-linux-gnu', 'linux', 'arm64'],
   ['x86_64-pc-windows-msvc', 'win32', 'x64'],
   ['aarch64-apple-darwin', 'darwin', 'arm64'],
   ['x86_64-apple-darwin', 'darwin', 'x64'],
 ];
+// The original recovery bundle is immutable and predates desktop packages.
+export const legacyPlatforms = platforms.map(([target, os, cpu]) => [target.replace('-linux-gnu', '-linux-musl'), os, cpu]);
+export const isMuslBundle = manifest => manifest.native.some(entry => entry.file.includes('-linux-musl.'));
+const originalManifestSha256 = '00452ea100e849ac7f74f7841d10c7aba717aac77cf030d51c1b97822af64c17';
+export const nativeArchiveName = (version, target, legacy = false) => `hpdev-${version}-${target}.${target.includes('-windows-') && !legacy ? 'zip' : 'tar.gz'}`;
+const python = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+const zipTool = fileURLToPath(new URL('./native_zip.py', import.meta.url));
 const repository = 'git+https://github.com/golba98/hp-prime-development-toolkit.git';
 const registry = 'https://registry.npmjs.org';
 const githubRepository = 'golba98/hp-prime-development-toolkit';
@@ -21,13 +29,20 @@ const integrity = data => `sha512-${digest(data, 'sha512', 'base64')}`;
 const json = async file => JSON.parse(await fs.readFile(file, 'utf8'));
 const run = (command, args, cwd = root) => execFileSync(command, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], shell: command === 'npm.cmd', maxBuffer: 16 * 1024 * 1024 });
 function ensure(condition, message) { if (!condition) throw new Error(message); }
-function tar(file, member) { return run('tar', ['-xOf', file, member]); }
-function tarBytes(file, member) { return execFileSync('tar', ['-xOf', file, member], { maxBuffer: 128 * 1024 * 1024 }); }
+function tar(file, member) { return tarBytes(file, member).toString('utf8'); }
+function tarBytes(file, member) { return file.endsWith('.zip') ? execFileSync(python, [zipTool, 'read', file, member], { maxBuffer: 128 * 1024 * 1024 }) : execFileSync('tar', ['-xOf', file, member], { maxBuffer: 128 * 1024 * 1024 }); }
 function entries(file) {
+  if (file.endsWith('.zip')) {
+    const rows = JSON.parse(run(python, [zipTool, 'list', file]));
+    const names = rows.map(row => row.name);
+    checkPaths(names.filter(name => !name.endsWith('/')).map(name => name.split('/').slice(1).join('/')), undefined, { archive: true });
+    return names;
+  }
   const names = run('tar', ['-tzf', file]).trim().split(/\r?\n/);
   ensure(names.every(name => !/[\\\\:]/.test(name) && name.replace(/\/$/, '').split('/').every(part => part && part !== '.' && part !== '..')), `Unsafe archive paths: ${file}`);
   ensure(new Set(names.map(name => name.replace(/\/$/, ''))).size === names.length, `Duplicate archive members: ${file}`);
   ensure(run('tar', ['-tvzf', file]).trim().split(/\r?\n/).every(line => /^[d-]/.test(line)), `Archive contains links or special files: ${file}`);
+  checkPaths(names.filter(name => !name.endsWith('/')).map(name => name.split('/').slice(1).join('/')), undefined, { archive: true });
   return names;
 }
 export function validateMetadata(cargoText, npm) {
@@ -62,7 +77,7 @@ export async function validateRef(directory = root) {
   validateMetadata(run('git', ['show', `${sha}:Cargo.toml`], directory), npm);
   const namedRef = run('git', ['rev-parse', '--symbolic-full-name', ref], directory).trim();
   if (publish || namedRef.startsWith('refs/tags/')) ensure(namedRef === `refs/tags/v${npm.version}`, 'Tag and package versions must match');
-  const matrix = platforms.map(([target, os, cpu], index) => ({ target, os, cpu, runner: ['ubuntu-24.04', 'ubuntu-24.04-arm', 'windows-latest', 'macos-15', 'macos-15-intel'][index] }));
+  const matrix = platforms.map(([target, os, cpu], index) => ({ target, os, cpu, runner: ['ubuntu-24.04', 'ubuntu-24.04-arm', 'windows-2022', 'macos-15', 'macos-15-intel'][index] }));
   const result = { sha, version: npm.version, tag: `v${npm.version}`, matrix: JSON.stringify({ include: matrix }) };
   if (process.env.GITHUB_OUTPUT) await fs.appendFile(process.env.GITHUB_OUTPUT, Object.entries(result).map(([key, value]) => `${key}=${value}\n`).join(''));
   console.log(JSON.stringify(result));
@@ -76,6 +91,7 @@ export function inspectPackage(file, expected) {
   for (const required of ['LICENSE', 'THIRD_PARTY_NOTICES.md']) ensure(names.includes(`package/${required}`), `Missing ${required}: ${file}`);
   if (expected.os) {
     ensure(JSON.stringify(pkg.os) === JSON.stringify([expected.os]) && JSON.stringify(pkg.cpu) === JSON.stringify([expected.cpu]), `Incorrect platform: ${file}`);
+    if (expected.os === 'linux' && !expected.legacyMusl) ensure(JSON.stringify(pkg.libc) === JSON.stringify(['glibc']), 'Linux desktop packages require glibc metadata');
     const executable = expected.os === 'win32' ? 'hpdev.exe' : 'hpdev';
     ensure(names.includes('package/licenses/inventory.json'), `Missing dependency notices: ${file}`);
     const hash = digest(tarBytes(file, `package/bin/${executable}`));
@@ -127,7 +143,7 @@ export async function prepare(source, output) {
   for (const [index, [target, os, cpu]] of platforms.entries()) {
     const directory = path.join(source, `hpdev-${target}`);
     const platform = { name: `hp-prime-devkit-${os}-${cpu}`, version: pkg.version, os, cpu };
-    const archive = `hpdev-${pkg.version}-${target}.tar.gz`;
+    const archive = nativeArchiveName(pkg.version, target);
     const expectedFiles = new Set([`${platform.name}-${pkg.version}.tgz`, `${pkg.name}-${pkg.version}.tgz`, archive, `${archive}.sha256`]);
     const files = await fs.readdir(directory, { withFileTypes: true });
     ensure(files.length === expectedFiles.size && files.every(entry => entry.isFile() && expectedFiles.delete(entry.name)), `Missing or unexpected files for ${target}`);
@@ -167,7 +183,11 @@ export async function prepare(source, output) {
   return manifest;
 }
 export async function validateBundle(directory) {
-  const manifest = await json(path.join(directory, 'release-manifest.json'));
+  const manifestBytes = await fs.readFile(path.join(directory, 'release-manifest.json'));
+  const manifest = JSON.parse(manifestBytes);
+  // Only these exact, previously reviewed bytes may select the historical ABI.
+  const legacyMusl = digest(manifestBytes) === originalManifestSha256;
+  const bundlePlatforms = legacyMusl ? legacyPlatforms : platforms;
   const pkg = await metadata();
   const expectedCommit = process.env.RELEASE_SHA || run('git', ['rev-parse', 'HEAD']).trim();
   ensure(manifest.version === pkg.version && /^[a-f0-9]{40}$/.test(manifest.commit) && manifest.commit === expectedCommit, 'Release manifest does not match the selected commit');
@@ -176,18 +196,18 @@ export async function validateBundle(directory) {
   const binaryHashes = new Map();
   for (const entry of manifest.npm) {
     ensure(entry.version === pkg.version && path.basename(entry.file) === entry.file && entry.file === `${entry.name}-${pkg.version}.tgz` && expectedNames.delete(entry.name), 'Unexpected or duplicate npm artifact');
-    const platform = platforms.find(([, os, cpu]) => entry.name === `hp-prime-devkit-${os}-${cpu}`);
+    const platform = bundlePlatforms.find(([, os, cpu]) => entry.name === `hp-prime-devkit-${os}-${cpu}`);
     ensure(!platform || (entry.os === platform[1] && entry.cpu === platform[2]), 'Incorrect manifest platform');
     const file = path.join(directory, entry.file);
     const bytes = await fs.readFile(file);
     ensure(integrity(bytes) === entry.integrity && digest(bytes) === entry.sha256, `Artifact integrity mismatch: ${entry.file}`);
-    const binaryHash = inspectPackage(file, platform ? { name: entry.name, version: pkg.version, os: platform[1], cpu: platform[2] } : pkg);
+    const binaryHash = inspectPackage(file, platform ? { name: entry.name, version: pkg.version, os: platform[1], cpu: platform[2], legacyMusl } : pkg);
     if (platform) binaryHashes.set(platform[0], binaryHash);
   }
-  const expectedArchives = new Set(platforms.map(([target]) => `hpdev-${pkg.version}-${target}.tar.gz`));
+  const expectedArchives = new Set(bundlePlatforms.map(([target]) => nativeArchiveName(pkg.version, target, legacyMusl)));
   for (const entry of manifest.native) {
     ensure(expectedArchives.delete(entry.file), 'Unexpected or duplicate native artifact');
-    const [target, os] = platforms.find(([target]) => entry.file === `hpdev-${pkg.version}-${target}.tar.gz`);
+    const [target, os] = bundlePlatforms.find(([target]) => entry.file === nativeArchiveName(pkg.version, target, legacyMusl));
     const file = path.join(directory, entry.file);
     ensure(digest(await fs.readFile(file)) === entry.sha256, `Artifact checksum mismatch: ${entry.file}`);
     ensure(await fs.readFile(`${file}.sha256`, 'utf8') === `${entry.sha256}  ${entry.file}\n`, 'Archive checksum file differs');
@@ -216,6 +236,12 @@ export async function ensurePublished(entry, lookup = registryVersion, wait = ()
   }
   throw new Error(`Registry did not expose ${entry.name}@${entry.version}; rerun the publish job using the preserved artifacts`);
 }
+// Read-only verification for releases whose exact tarballs already exist on npm.
+export async function verifyPublishedBundle(directory, { lookup = registryVersion, wait } = {}) {
+  const manifest = await validateBundle(directory);
+  for (const entry of manifest.npm) await ensurePublished(entry, lookup, wait);
+  return manifest;
+}
 export async function publish(directory, {
   lookup = registryVersion,
   upload = file => run('npm', ['publish', file, '--access', 'public', '--tag', 'latest', '--ignore-scripts', '--registry', registry]),
@@ -238,7 +264,7 @@ export async function publish(directory, {
     console.log(`Verified ${entry.name}@${entry.version}`);
   }
 }
-async function githubApi(endpoint) {
+export async function githubApi(endpoint) {
   const response = await fetch(`https://api.github.com/repos/golba98/hp-prime-development-toolkit/${endpoint}`, {
     headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' },
     signal: AbortSignal.timeout(30000),
@@ -248,17 +274,21 @@ async function githubApi(endpoint) {
   return response.json();
 }
 export function validateSourceRun(record, commit, tag) {
-  ensure(record?.name === 'Manual release' && record.path === '.github/workflows/release.yml'
-    && record.event === 'workflow_dispatch' && record.conclusion === 'success'
-    && record.head_sha === commit && record.head_repository?.full_name === githubRepository
+  // GitHub can populate `name` from run-name (for example "Release v0.1.0
+  // (dry run)"). Identify the workflow by its path and execution provenance.
+  ensure(record?.path === '.github/workflows/release.yml'
+    && record.event === 'workflow_dispatch' && record.status === 'completed' && record.conclusion === 'success'
+    && record.head_branch === tag && record.head_sha === commit && record.head_repository?.full_name === githubRepository
     && [`Release ${tag} (dry run)`, `Release ${tag} (publish)`].includes(record.display_title),
   'Bundle must come from a successful tag-dispatched run of the selected source workflow');
 }
-async function verifySourceRun() {
-  const id = process.env.BUNDLE_RUN_ID;
+export async function verifySourceRun({
+  id = process.env.BUNDLE_RUN_ID, commit = process.env.RELEASE_SHA, tag = process.env.RELEASE_TAG, api = githubApi,
+} = {}) {
   ensure(/^[0-9]+$/.test(id), 'Invalid bundle workflow run ID');
-  const record = await githubApi(`actions/runs/${id}`);
-  validateSourceRun(record, process.env.RELEASE_SHA, process.env.RELEASE_TAG);
+  const record = await api(`actions/runs/${id}`);
+  validateSourceRun(record, commit, tag);
+  return record;
 }
 async function assetBytes(asset) {
   const response = await fetch(asset.url, { headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/octet-stream' }, signal: AbortSignal.timeout(60000) });
@@ -283,8 +313,7 @@ export async function githubRelease(directory, finalize = false, {
   tagCommit = tag => run('git', ['rev-parse', '--verify', `refs/tags/${tag}^{commit}`]).trim(),
 } = {}) {
   ensure(process.env.RELEASE_PUBLISH === 'true', 'Release creation requires RELEASE_PUBLISH=true');
-  const manifest = await validateBundle(directory);
-  for (const entry of manifest.npm) await ensurePublished(entry, lookup);
+  const manifest = await verifyPublishedBundle(directory, { lookup });
   const tag = `v${manifest.version}`;
   ensure(await tagCommit(tag) === manifest.commit, 'Release tag moved or does not match the bundle');
   let release = await findRelease(tag, api);
@@ -310,7 +339,7 @@ export async function githubRelease(directory, finalize = false, {
   return release;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+async function main() {
   const [command, source = 'artifacts', output = 'release'] = process.argv.slice(2);
   if (command === 'ref') await validateRef();
   else if (command === 'prepare') await prepare(path.resolve(source), path.resolve(output));
@@ -325,4 +354,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     else await verifyNative(path.resolve(source), { publicRelease: process.env.RELEASE_PUBLIC === 'true' });
   }
   else throw new Error('Usage: node scripts/release.mjs ref|prepare [ARTIFACTS OUTPUT]|verify DIRECTORY|publish DIRECTORY|stage DIRECTORY|complete DIRECTORY|smoke DIRECTORY|native-smoke DIRECTORY');
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  // Finish module evaluation before verify-install imports these shared exports.
+  // Awaiting main here would deadlock the smoke commands' circular import.
+  main().catch(error => { console.error(error); process.exitCode = 1; });
 }

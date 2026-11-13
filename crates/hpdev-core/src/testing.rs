@@ -124,7 +124,7 @@ pub fn run_suite(
             request.max_time = Some(s);
         }
         if let Some(s) = case.max_steps {
-            request.max_steps = s;
+            request.max_steps = Some(s);
         }
         if request.max_time.is_some_and(|s| !s.is_finite() || s <= 0.) {
             report.fail(

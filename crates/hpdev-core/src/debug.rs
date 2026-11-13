@@ -210,7 +210,9 @@ impl Debugger for Controller {
         let breakpoint = here.file == self.root.name
             && self.breakpoints.contains(&(here.line as usize))
             && previous != Some(position);
-        let stop = breakpoint
+        let pause = std::mem::take(&mut self.input.borrow_mut().pause_requested);
+        let stop = pause
+            || breakpoint
             || match self.mode {
                 Mode::Step => true,
                 Mode::Next(d) => depth <= d,
@@ -221,7 +223,13 @@ impl Debugger for Controller {
             return DebugAction::Continue;
         }
         let mut selected = 0;
-        let reason = if breakpoint { "breakpoint" } else { "step" };
+        let reason = if pause {
+            "pause"
+        } else if breakpoint {
+            "breakpoint"
+        } else {
+            "step"
+        };
         if !self.send(Event::Stop {
             snapshot: Box::new(self.snapshot(machine, span, depth, selected, reason)),
         }) {

@@ -5,6 +5,10 @@ HP Prime Development Toolkit uses HP Prime Emulator crates at commit
 The native graphics engine embeds DejaVu Sans under its accompanying font licenses.
 No HP firmware, proprietary fonts or calculator housing assets are included.
 
+The desktop frontend also contains the pinned emulator's MIT-licensed
+`keymap.rs`, `scaler.rs`, `dialog.rs` and `dialog/matrix.rs`, with module paths
+adapted. Exact provenance is in
+`crates/hpdev-cli/src/desktop/upstream/provenance.json`.
 The complete upstream MIT and DejaVu notices follow. Distribution packaging also
 collects the other Cargo dependencies’ license files in `licenses/`.
 

@@ -447,3 +447,67 @@ fn tolerance_is_explicit_and_mismatches_produce_artifacts() {
     let (c, r, _) = invoke(&["test", manifest.to_str().unwrap()], "");
     assert_eq!(c, 0, "{r}");
 }
+
+#[test]
+fn explicit_headless_runs_need_no_display_and_preserve_args_and_scripts() {
+    for (file, extra, expected) in [
+        ("examples/SQUARE.ppl", vec!["--args", "[7]"], "49"),
+        ("tests/fixtures/WAIT.ppl", vec!["--keys", "4"], "4"),
+    ] {
+        let output = Command::new(BIN)
+            .current_dir(root())
+            .args(["run", file, "--headless", "--json"])
+            .args(extra)
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .env_remove("WAYLAND_SOCKET")
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{:?}", output);
+        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["return_value"]["value"], expected);
+        assert_eq!(report["data"]["viewer"]["desktop"], false);
+    }
+}
+#[test]
+#[cfg(all(target_os = "linux", feature = "desktop"))]
+fn requested_gui_reports_display_initialization_failure_without_fallback() {
+    let output = Command::new(BIN)
+        .current_dir(root())
+        .args(["run", "tests/fixtures/WAIT.ppl", "--gui", "--json"])
+        .env_remove("DISPLAY")
+        .env_remove("WAYLAND_DISPLAY")
+        .env_remove("WAYLAND_SOCKET")
+        .output()
+        .unwrap();
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["status"], "infrastructure_error");
+    assert!(report["error"].as_str().unwrap().contains("--headless"));
+    assert_eq!(report["frames_presented"], 0);
+}
+
+#[test]
+fn unicode_and_space_paths_preserve_native_arguments_and_reports() {
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("計算 é file.ppl");
+    let report_path = directory.path().join("résultat 計算.json");
+    std::fs::write(&file, "EXPORT MAIN(X) BEGIN RETURN X+1; END;").unwrap();
+    let (code, report, _) = invoke(
+        &[
+            "run",
+            file.to_str().unwrap(),
+            "--headless",
+            "--entry",
+            "MAIN",
+            "--args",
+            "[41]",
+            "--report",
+            report_path.to_str().unwrap(),
+        ],
+        "",
+    );
+    assert_eq!(code, 0, "{report}");
+    assert_eq!(report["return_value"]["value"], "42");
+    let saved: Value = serde_json::from_slice(&std::fs::read(report_path).unwrap()).unwrap();
+    assert_eq!(saved, report);
+}

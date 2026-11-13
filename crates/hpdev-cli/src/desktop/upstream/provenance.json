@@ -1,0 +1,31 @@
+{
+  "repository": "https://github.com/golba98/hp-prime-emulator",
+  "revision": "8d7535ec432e3c66f4f210f32a4ae58c5911d96d",
+  "license": "MIT",
+  "files": {
+    "keymap.rs": {
+      "source": "crates/ppl-gui/src/keymap.rs",
+      "upstream_sha256": "8c3a4806fe1a5f4ac1dc8749bae39fea7f091d868674db37af54dbc9eaf6c626",
+      "adaptation": "none",
+      "adapted_sha256": "8c3a4806fe1a5f4ac1dc8749bae39fea7f091d868674db37af54dbc9eaf6c626"
+    },
+    "scaler.rs": {
+      "source": "crates/ppl-gui/src/scaler.rs",
+      "upstream_sha256": "da63da8fd0e97a55da5b65aa9fb74b3e0f141229c3dcb4c6526d5e433274bcf7",
+      "adaptation": "none",
+      "adapted_sha256": "da63da8fd0e97a55da5b65aa9fb74b3e0f141229c3dcb4c6526d5e433274bcf7"
+    },
+    "dialog.rs": {
+      "source": "crates/ppl-gui/src/dialog.rs",
+      "upstream_sha256": "46bb8cbb2ce926e0aa78590137bb97e9cd357a03f88b35022ebf9ddc4be829ed",
+      "adaptation": "module path only",
+      "adapted_sha256": "ff4b326b27aa102e7ca107c9e8bc1635cca1811909f32e29e630d45ca3fbaa49"
+    },
+    "dialog/matrix.rs": {
+      "source": "crates/ppl-gui/src/dialog/matrix.rs",
+      "upstream_sha256": "5ebe0ac0510b23e92017e95e1eca8cfcf21f9fc4ff8be76caa5b40f0059387bc",
+      "adaptation": "module path only",
+      "adapted_sha256": "0bc7b754ceb06c9487801b814354715b966c255176c1f8a4132c63f30aabae6f"
+    }
+  }
+}

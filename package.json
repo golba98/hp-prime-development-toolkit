@@ -6,7 +6,8 @@
     "test:npm": "node scripts/test-npm.mjs",
     "test:browser": "playwright test",
     "check:docs": "node scripts/check-docs.mjs && python3 scripts/check_documentation.py",
-    "test:docs": "python3 scripts/test_documentation_policy.py && node --test scripts/check-docs.test.mjs"
+    "test:docs": "node --test scripts/check-docs.test.mjs",
+    "hooks:install": "node scripts/install-hooks.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.65.0"

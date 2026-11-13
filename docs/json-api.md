@@ -4,6 +4,11 @@
 options and help/version requests also produce a document when JSON is
 requested. Human logs, browser URLs and optional TUI output use stderr.
 
+`run --json` keeps deterministic headless execution. Add `--gui` explicitly
+to open a desktop window; JSON is emitted after the session closes (or use
+`--exit-on-finish`). `data.viewer.desktop` identifies native desktop sessions.
+Window diagnostics use stderr. The public report schema remains version 1.
+
 Core fields:
 
 | Field | Meaning |
