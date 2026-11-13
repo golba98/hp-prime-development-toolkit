@@ -134,6 +134,11 @@ class NativeTests(unittest.TestCase):
         previous=app.title();app.click(840,47)
         wait(lambda:"Paused:" in app.title() and app.title()!=previous,"real statement step")
         app.click(755,47);app.state("Running")
+        # Match the initial native window geometry before comparing pixels:
+        # macOS rounds its outer corners, including the calculator's footer.
+        app.click(100,15);app.debug=False
+        wait(lambda:self.desktop.size(app.window)[0]==round(640*self.desktop.dpi(app.window)),"collapse debugger")
+        self.desktop.focus(app.window)
         app.touch(80,230);app.state("input: Delete node")
         app.text("42");app.press("enter");app.state("Running")
         self.assertNotEqual(app.framebuffer(),tree)

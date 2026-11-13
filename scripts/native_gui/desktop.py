@@ -158,11 +158,6 @@ class Mac:
         self.ax=C.CDLL("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")
         assert bind(self.cg,"CGPreflightScreenCaptureAccess",C.c_bool)(),"Screen Recording permission is not available to this test process"
         assert bind(self.ax,"AXIsProcessTrusted",C.c_bool)(),"Accessibility permission is not available to this test process"
-        self.objc=C.CDLL("/usr/lib/libobjc.A.dylib")
-        C.CDLL("/System/Library/Frameworks/AppKit.framework/AppKit")
-        self.cls=bind(self.objc,"objc_getClass",C.c_void_p,C.c_char_p)
-        self.sel=bind(self.objc,"sel_registerName",C.c_void_p,C.c_char_p)
-        self.msgaddr=C.cast(self.objc.objc_msgSend,C.c_void_p).value
         self.release=bind(self.cf,"CFRelease",None,C.c_void_p)
         self.arraylen=bind(self.cf,"CFArrayGetCount",C.c_long,C.c_void_p)
         self.arrayget=bind(self.cf,"CFArrayGetValueAtIndex",C.c_void_p,C.c_void_p,C.c_long)
@@ -185,12 +180,8 @@ class Mac:
         self.mouseevent=bind(self.cg,"CGEventCreateMouseEvent",C.c_void_p,C.c_void_p,C.c_uint,Point,C.c_uint)
         self.post=bind(self.cg,"CGEventPost",None,C.c_uint,C.c_void_p)
         self.unicode=bind(self.cg,"CGEventKeyboardSetUnicodeString",None,C.c_void_p,C.c_ulong,C.c_void_p)
-        self.windows={};self._dpi={};self.offset={};self.flags=0;self.ax_windows={}
+        self.windows={};self._dpi={};self.offset={};self.flags=0;self.ax_windows={};self.positioned=set()
         self.eventflags=bind(self.cg,"CGEventSetFlags",None,C.c_void_p,C.c_ulonglong)
-        self.runloop=bind(self.cf,"CFRunLoopRunInMode",C.c_int,C.c_void_p,C.c_double,C.c_bool)
-        self.runloop_mode=C.c_void_p.in_dll(self.cf,"kCFRunLoopDefaultMode")
-    def msg(self,obj,name,result=C.c_void_p,types=(),values=()):
-        return C.CFUNCTYPE(result,C.c_void_p,C.c_void_p,*types)(self.msgaddr)(obj,self.sel(name.encode()),*values)
     def value(self,dictionary,name,number=False):
         key=self.stringnew(None,name.encode(),0x08000100)
         try:v=self.dictget(dictionary,key)
@@ -220,33 +211,42 @@ class Mac:
     def find(self,pid):
         return next((r["id"] for r in self.refresh() if r["pid"]==pid and r["title"].startswith("hpdev")),None)
     def title(self,w):self.refresh();return self.windows[w]["title"]
+    def _frontmost(self,pid,activate=False):
+        app=bind(self.ax,"AXUIElementCreateApplication",C.c_void_p,C.c_int)(pid)
+        key=self.stringnew(None,b"AXFrontmost",0x08000100);out=C.c_void_p()
+        try:
+            if activate:
+                boolean=C.c_void_p.in_dll(self.cf,"kCFBooleanTrue")
+                assert bind(self.ax,"AXUIElementSetAttributeValue",C.c_int,C.c_void_p,C.c_void_p,C.c_void_p)(app,key,boolean)==0
+            assert bind(self.ax,"AXUIElementCopyAttributeValue",C.c_int,C.c_void_p,C.c_void_p,C.POINTER(C.c_void_p))(app,key,C.byref(out))==0
+            return bind(self.cf,"CFBooleanGetValue",C.c_bool,C.c_void_p)(out)
+        finally:
+            if out.value:self.release(out)
+            self.release(key);self.release(app)
     def focus(self,w):
-        app=self.msg(self.cls(b"NSRunningApplication"),"runningApplicationWithProcessIdentifier:",types=(C.c_int,),values=(self.windows[w]["pid"],))
-        self.msg(app,"activateWithOptions:",C.c_bool,(C.c_ulong,),(2,))
+        pid=self.windows[w]["pid"]
+        self._frontmost(pid,activate=True)
         deadline=time.monotonic()+4
-        while True:
-            # AppKit caches NSRunningApplication properties until the next
-            # main run-loop turn; sleeping alone does not refresh isActive.
-            self.runloop(self.runloop_mode,.02,False)
-            if self.msg(app,"isActive",C.c_bool):break
+        while not self._frontmost(pid):
             assert time.monotonic()<deadline,"Calculator did not acquire application focus"
+            time.sleep(.04)
         # Hosted Mac screens can be only 1024px wide. Keep debugger buttons
         # reachable by real mouse events even when its window grows to 1080px.
-        window=self._ax_window(w);key=self.stringnew(None,b"AXPosition",0x08000100)
-        point=self.Point(0,25)
-        value=bind(self.ax,"AXValueCreate",C.c_void_p,C.c_int,C.c_void_p)(1,C.byref(point))
-        try:assert bind(self.ax,"AXUIElementSetAttributeValue",C.c_int,C.c_void_p,C.c_void_p,C.c_void_p)(window,key,value)==0
-        finally:self.release(value);self.release(key);self.release(window)
+        if w not in self.positioned:
+            window=self._ax_window(w);key=self.stringnew(None,b"AXPosition",0x08000100)
+            point=self.Point(0,25)
+            value=bind(self.ax,"AXValueCreate",C.c_void_p,C.c_int,C.c_void_p)(1,C.byref(point))
+            try:assert bind(self.ax,"AXUIElementSetAttributeValue",C.c_int,C.c_void_p,C.c_void_p,C.c_void_p)(window,key,value)==0
+            finally:self.release(value);self.release(key);self.release(window)
+            self.positioned.add(w)
     def blur(self,w):
         # An unbundled Python process cannot always become a regular Cocoa
         # application. Activate Finder and verify the calculator loses focus.
         subprocess.run(["/usr/bin/open","-a","Finder"],check=True,timeout=5)
-        app=self.msg(self.cls(b"NSRunningApplication"),"runningApplicationWithProcessIdentifier:",types=(C.c_int,),values=(self.windows[w]["pid"],))
         deadline=time.monotonic()+4
-        while True:
-            self.runloop(self.runloop_mode,.02,False)
-            if not self.msg(app,"isActive",C.c_bool):break
+        while self._frontmost(self.windows[w]["pid"]):
             assert time.monotonic()<deadline,"Finder did not acquire application focus"
+            time.sleep(.04)
     def cleanup(self):
         for window in self.ax_windows.values():self.release(window)
         self.ax_windows.clear()
