@@ -26,6 +26,13 @@ pub struct Capture {
     pub trace_exhausted: bool,
     pub debug_history: Vec<serde_json::Value>,
     pub dialog_bytes: usize,
+    pub trace_counts: BTreeMap<String, u64>,
+    pub covered_spans: std::collections::BTreeSet<(String, u32, u32)>,
+    pub profile_functions: BTreeMap<String, (u64, u64, f64)>,
+    pub profile_lines: BTreeMap<(String, String, u32), (u64, u64, f64)>,
+    pub last_profile_site: Option<(String, String, u32)>,
+    pub last_profile_steps: u64,
+    pub last_profile_time: Option<Instant>,
 }
 
 impl Capture {

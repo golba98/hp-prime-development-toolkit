@@ -11,7 +11,7 @@ use ppl_vm::{
 use serde_json::json;
 use std::{
     cell::RefCell,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     io::{self, Read, Write},
     path::{Path, PathBuf},
     rc::Rc,
@@ -74,7 +74,7 @@ pub fn save_image(path: &Path, image: &ppl_graphics::Grob) -> io::Result<()> {
     atomic_bytes(path, &bytes)
 }
 
-fn diagnostic(file: &SourceFile, d: &ppl_syntax::Diagnostic) -> Diagnostic {
+pub(crate) fn to_diagnostic(file: &SourceFile, d: &ppl_syntax::Diagnostic) -> Diagnostic {
     Diagnostic {
         severity: match d.severity {
             Severity::Error => "error",
@@ -97,7 +97,10 @@ fn diagnostic(file: &SourceFile, d: &ppl_syntax::Diagnostic) -> Diagnostic {
     }
 }
 
-fn load(path: &Path, bytes: Option<Vec<u8>>) -> Result<Source, (u8, String)> {
+pub(crate) fn load_source_file(
+    path: &Path,
+    bytes: Option<Vec<u8>>,
+) -> Result<Source, (u8, String)> {
     let bytes = match bytes {
         Some(b) => b,
         None => {
@@ -123,6 +126,38 @@ fn load(path: &Path, bytes: Option<Vec<u8>>) -> Result<Source, (u8, String)> {
     Source::decode(bytes, Some(absolute), path.display().to_string()).map_err(|e| (1, e))
 }
 
+pub(crate) type ResolvedModules = (
+    BTreeMap<String, SourceFile>,
+    BTreeMap<String, ppl_vm::ModuleSource>,
+);
+
+pub(crate) fn resolve_modules(
+    root_source: &Source,
+    modules: &[String],
+) -> Result<ResolvedModules, (u8, String)> {
+    let root_file = SourceFile::new(&root_source.identity.display_name, &root_source.text);
+    let mut sources = BTreeMap::new();
+    let mut catalog = BTreeMap::new();
+    for module in modules {
+        let Some((name, path)) = module.split_once('=') else {
+            return Err((2, "module must be NAME=PATH".into()));
+        };
+        if name.is_empty() || name == root_file.name || catalog.contains_key(name) {
+            return Err((2, "duplicate or empty module name".into()));
+        }
+        let module_source = load_source_file(Path::new(path), None)?;
+        sources.insert(name.to_owned(), SourceFile::new(path, &module_source.text));
+        catalog.insert(
+            name.to_owned(),
+            ppl_vm::ModuleSource {
+                identity: ppl_vm::SourceIdentity::new(name, &module_source.identity.source_sha256),
+                source: module_source.text,
+            },
+        );
+    }
+    Ok((sources, catalog))
+}
+
 pub fn execute(request: Request, input: Rc<RefCell<InputState>>, emit: Emit) -> Report {
     let started = Instant::now();
     let mut report = Report::new(&request.operation, Some(request.file.clone()));
@@ -146,7 +181,7 @@ fn execute_inner(
         report.fail(status, code, error.to_string());
         return;
     }
-    let source = match load(&request.file, request.source_bytes.clone()) {
+    let source = match load_source_file(&request.file, request.source_bytes.clone()) {
         Ok(s) => s,
         Err((code, error)) => {
             report.fail(
@@ -186,7 +221,7 @@ fn execute_inner(
             report.fail("invalid_request", 2, "duplicate or empty module name");
             return;
         }
-        let module_source = match load(Path::new(path), None) {
+        let module_source = match load_source_file(Path::new(path), None) {
             Ok(s) => s,
             Err((code, e)) => {
                 report.fail(
@@ -247,9 +282,12 @@ fn execute_inner(
     let program = if let Some(image) = &linked {
         for (identity, diagnostics) in image.diagnostics() {
             let source_file = sources.get(&identity.name).unwrap_or(&file);
-            report
-                .diagnostics
-                .extend(diagnostics.items.iter().map(|d| diagnostic(source_file, d)));
+            report.diagnostics.extend(
+                diagnostics
+                    .items
+                    .iter()
+                    .map(|d| to_diagnostic(source_file, d)),
+            );
         }
         Some(image.program().clone())
     } else {
@@ -257,7 +295,7 @@ fn execute_inner(
         report.diagnostics = diagnostics
             .items
             .iter()
-            .map(|d| diagnostic(&file, d))
+            .map(|d| to_diagnostic(&file, d))
             .collect();
         program
     };
@@ -282,6 +320,9 @@ fn execute_inner(
         return;
     }
     if request.operation == "check" {
+        if request.dump_bytecode {
+            report.data = json!({ "disassembly": program.disassemble() });
+        }
         return;
     }
     let entry = match program.pick_entry_with_stem(request.entry.as_deref(), Some(&source.stem)) {
@@ -382,12 +423,13 @@ fn execute_inner(
         max_string_bytes: request.max_string_bytes,
         max_output_chars: request.max_output_chars,
     };
+    let compiled_program = program.clone();
     let mut machine = match linked {
         Some(image) => Machine::new_linked(image, Box::new(host), settings, limits),
         None => Machine::new(Rc::new(program), Box::new(host), settings, limits),
     };
     machine.set_seed(request.seed);
-    if request.debug || request.trace {
+    if request.debug || request.trace || request.profile || request.coverage {
         machine.set_debugger(Some(Box::new(Controller::new(
             &request,
             file.clone(),
@@ -400,11 +442,32 @@ fn execute_inner(
     let result = machine
         .initialize_dependencies()
         .and_then(|_| machine.call_function(&entry, args));
+    if request.profile {
+        crate::debug::finalize_profile(&mut capture.borrow_mut(), machine.steps());
+    }
     let captured = capture.borrow();
     report.output = captured.output.clone();
     report.frames_presented = captured.frames;
     report.trace = captured.trace.clone();
-    report.data = json!({"dialogs": captured.dialogs, "debug_history": captured.debug_history});
+    let mut data_map = serde_json::Map::new();
+    data_map.insert("dialogs".into(), json!(captured.dialogs));
+    data_map.insert("debug_history".into(), json!(captured.debug_history));
+    if request.trace_summary {
+        data_map.insert("trace_summary".into(), json!(captured.trace_counts));
+    }
+    if request.profile {
+        data_map.insert(
+            "profile".into(),
+            build_profile_report(&captured, machine.steps()),
+        );
+    }
+    if request.coverage {
+        data_map.insert(
+            "coverage".into(),
+            build_coverage_report(&compiled_program, &file, &captured.covered_spans),
+        );
+    }
+    report.data = serde_json::Value::Object(data_map);
     report.instructions = machine.steps();
     match result {
         Ok(value) => {
@@ -490,4 +553,141 @@ fn execute_inner(
             }
         }
     }
+}
+
+fn build_profile_report(capture: &Capture, total_steps: u64) -> serde_json::Value {
+    let mut functions: Vec<_> = capture
+        .profile_functions
+        .iter()
+        .map(|(name, (calls, steps, us))| {
+            let pct = if total_steps > 0 {
+                (*steps as f64 / total_steps as f64) * 100.0
+            } else {
+                0.0
+            };
+            json!({
+                "function": name,
+                "statements": calls,
+                "instructions": steps,
+                "pct_instructions": (pct * 100.0).round() / 100.0,
+                "duration_ms": (*us / 1000.0 * 1000.0).round() / 1000.0,
+            })
+        })
+        .collect();
+    functions.sort_by(|a, b| b["instructions"].as_u64().cmp(&a["instructions"].as_u64()));
+
+    let mut hot_lines: Vec<_> = capture
+        .profile_lines
+        .iter()
+        .map(|((file, function, line), (hits, steps, us))| {
+            json!({
+                "file": file,
+                "function": function,
+                "line": line,
+                "hits": hits,
+                "instructions": steps,
+                "duration_ms": (*us / 1000.0 * 1000.0).round() / 1000.0,
+            })
+        })
+        .collect();
+    hot_lines.sort_by(|a, b| b["instructions"].as_u64().cmp(&a["instructions"].as_u64()));
+
+    json!({
+        "total_instructions": total_steps,
+        "functions": functions,
+        "hot_lines": hot_lines,
+    })
+}
+
+fn build_coverage_report(
+    program: &ppl_compiler::CompiledProgram,
+    root: &SourceFile,
+    covered_spans: &BTreeSet<(String, u32, u32)>,
+) -> serde_json::Value {
+    let mut total_stmts = 0usize;
+    let mut covered_stmts = 0usize;
+    let mut total_lines = BTreeSet::new();
+    let mut covered_lines = BTreeSet::new();
+    let mut per_function = Vec::new();
+    let mut functions_total = 0usize;
+    let mut functions_covered = 0usize;
+
+    for chunk in &program.functions {
+        let mut fn_stmts = 0usize;
+        let mut fn_covered = 0usize;
+        let mut fn_lines = BTreeSet::new();
+        let mut fn_covered_lines = BTreeSet::new();
+
+        for (op, span) in chunk.code.iter().zip(chunk.spans.iter()) {
+            if !matches!(op, ppl_compiler::Op::Stmt) {
+                continue;
+            }
+            let line = root.line_col(span.start).line;
+            fn_stmts += 1;
+            total_stmts += 1;
+            fn_lines.insert(line);
+            total_lines.insert(line);
+            if covered_spans.contains(&(root.name.clone(), span.start, span.end)) {
+                fn_covered += 1;
+                covered_stmts += 1;
+                fn_covered_lines.insert(line);
+                covered_lines.insert(line);
+            }
+        }
+        if fn_stmts > 0 {
+            functions_total += 1;
+            if fn_covered > 0 {
+                functions_covered += 1;
+            }
+        }
+        let fn_uncovered: Vec<u32> = fn_lines.difference(&fn_covered_lines).copied().collect();
+        let fn_line_pct = if fn_lines.is_empty() {
+            100.0
+        } else {
+            (fn_covered_lines.len() as f64 / fn_lines.len() as f64) * 100.0
+        };
+        per_function.push(json!({
+            "function": chunk.name,
+            "exported": chunk.exported,
+            "statements_total": fn_stmts,
+            "statements_covered": fn_covered,
+            "lines_total": fn_lines.len(),
+            "lines_covered": fn_covered_lines.len(),
+            "line_pct": (fn_line_pct * 100.0).round() / 100.0,
+            "uncovered_lines": fn_uncovered,
+        }));
+    }
+
+    let uncovered_lines: Vec<u32> = total_lines.difference(&covered_lines).copied().collect();
+    let stmt_pct = if total_stmts == 0 {
+        100.0
+    } else {
+        (covered_stmts as f64 / total_stmts as f64) * 100.0
+    };
+    let line_pct = if total_lines.is_empty() {
+        100.0
+    } else {
+        (covered_lines.len() as f64 / total_lines.len() as f64) * 100.0
+    };
+    let fn_pct = if functions_total == 0 {
+        100.0
+    } else {
+        (functions_covered as f64 / functions_total as f64) * 100.0
+    };
+
+    json!({
+        "file": root.name,
+        "statements_total": total_stmts,
+        "statements_covered": covered_stmts,
+        "statement_pct": (stmt_pct * 100.0).round() / 100.0,
+        "lines_total": total_lines.len(),
+        "lines_covered": covered_lines.len(),
+        "line_pct": (line_pct * 100.0).round() / 100.0,
+        "functions_total": functions_total,
+        "functions_covered": functions_covered,
+        "function_pct": (fn_pct * 100.0).round() / 100.0,
+        "uncovered_lines": uncovered_lines,
+        "covered_lines": covered_lines.iter().copied().collect::<Vec<_>>(),
+        "per_function": per_function,
+    })
 }
