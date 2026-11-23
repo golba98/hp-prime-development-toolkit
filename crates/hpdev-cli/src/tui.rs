@@ -494,6 +494,15 @@ impl TerminalUi {
                     "Breakpoints: {:?}",
                     snapshot.breakpoints
                 )));
+                if !snapshot.watches.is_empty() {
+                    lines.push(Line::from("Watches"));
+                    for (expr, value) in &snapshot.watches {
+                        lines.push(Line::from(format!(
+                            "{expr} = {}",
+                            crate::cli::display_value(value)
+                        )));
+                    }
+                }
             }
             lines
         };

@@ -671,7 +671,7 @@ impl ApplicationHandler for Desktop {
                 outcome.report.data["viewer"] =
                     serde_json::json!({"desktop": true, "terminal": false, "browser": false});
                 if !json {
-                    crate::cli::print_diagnostics(&outcome.report);
+                    crate::cli::print_diagnostics(&outcome.report, false);
                 }
                 let _ = event_tx.send(Event::Final {
                     report: Box::new(outcome.report),

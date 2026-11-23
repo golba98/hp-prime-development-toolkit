@@ -1,4 +1,11 @@
-use crate::driver::{self, ViewOptions, Views};
+use crate::{
+    commands::{
+        self, AstOpts, BenchOpts, CompatOpts, CoverageOpts, DisasmOpts, DocsOpts, EvalOpts,
+        FormatOpts, InitOpts, InspectOpts, LintOpts, PackageOpts, PlotOpts, ProfileOpts, ReplOpts,
+        SnapshotAction, SnapshotOpts, StatsOpts, SymbolsOpts,
+    },
+    driver::{self, ViewOptions, Views},
+};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use hpdev_core::{
     Report, Request,
@@ -21,19 +28,22 @@ use std::{
     version,
     about = "Standalone native HP Prime PPL development toolkit"
 )]
-struct Cli {
+pub struct Cli {
     #[arg(long, global = true)]
-    json: bool,
+    pub json: bool,
     #[arg(short, long, global = true)]
-    quiet: bool,
+    pub quiet: bool,
+    /// Show additional diagnostic hints, source metadata, and timing details.
+    #[arg(short, long, global = true)]
+    pub verbose: bool,
     /// Atomically write the same versioned JSON report to a file.
     #[arg(long, global = true)]
-    report: Option<PathBuf>,
+    pub report: Option<PathBuf>,
     #[command(subcommand)]
-    command: Command,
+    pub command: Command,
 }
 #[derive(Subcommand)]
-enum Command {
+pub enum Command {
     /// Validate without executing. Compatibility limitations remain distinct.
     Check(Check),
     /// Run in a native interactive window; use --headless for automation.
@@ -50,119 +60,167 @@ enum Command {
     Trace(Trace),
     /// Inspect native installation and presentation capabilities; never opens USB.
     Doctor,
+    /// Evaluate a mathematical or PPL expression directly.
+    Eval(EvalOpts),
+    /// Interactive stateful PPL session (Home-style environment).
+    Repl(ReplOpts),
+    /// Analyze HP Prime compatibility or list supported built-in commands.
+    Compat(CompatOpts),
+    /// Inspect parsed PPL abstract syntax trees and token streams.
+    Ast(AstOpts),
+    /// Inspect program functions, globals, forward declarations, and pragmas.
+    Symbols(SymbolsOpts),
+    /// Disassemble compiled PPL bytecode instructions.
+    Disasm(DisasmOpts),
+    /// Run static code-quality and compatibility lint checks.
+    Lint(LintOpts),
+    /// Format PPL source code with syntax verification.
+    Format(FormatOpts),
+    /// Inspect .ppl or binary .hpprgm container structure and compiled metrics.
+    Inspect(InspectOpts),
+    /// Benchmark deterministic PPL execution timing and instruction counts.
+    Bench(BenchOpts),
+    /// Profile per-function and per-line VM instruction hot spots.
+    Profile(ProfileOpts),
+    /// Measure line, statement, and function coverage for a program or manifest.
+    Coverage(CoverageOpts),
+    /// Plot mathematical expressions in X to a PNG image and/or ASCII terminal view.
+    Plot(PlotOpts),
+    /// Compute 1-variable and 2-variable statistics and regressions.
+    Stats(StatsOpts),
+    /// Initialize a structured PPL project with starter code and hpdev.toml.
+    Init(InitOpts),
+    /// Pack a PPL program into a binary .hpprgm container or unpack one to .ppl.
+    Package(PackageOpts),
+    /// Look up HP Prime command documentation or extract PPL API docs.
+    Docs(DocsOpts),
+    /// Capture, inspect, or execute against saved calculator session snapshots.
+    Snapshot(SnapshotOpts),
 }
 #[derive(Clone, Copy, ValueEnum)]
-enum Engine {
+pub enum Engine {
     Native,
     Firmware,
 }
 #[derive(Clone, Copy, ValueEnum)]
-enum ArgsFormat {
+pub enum ArgsFormat {
     Json,
     Ppl,
 }
 #[derive(Clone, Copy, ValueEnum)]
-enum Angle {
+pub enum Angle {
     Rad,
     Deg,
     Grad,
 }
 #[derive(Args)]
-struct Source {
-    file: PathBuf,
+pub struct Source {
+    pub file: PathBuf,
     #[arg(long, value_name = "NAME=PATH")]
-    module: Vec<String>,
+    pub module: Vec<String>,
     #[arg(long, value_enum, default_value = "native")]
-    engine: Engine,
+    pub engine: Engine,
 }
 #[derive(Args)]
-struct Check {
+pub struct Check {
     #[command(flatten)]
-    source: Source,
+    pub source: Source,
     #[arg(long)]
-    deny_warnings: bool,
+    pub deny_warnings: bool,
     #[arg(long)]
-    deny_compatibility: bool,
+    pub deny_compatibility: bool,
+    /// Fail on any warning or compatibility limitation.
+    #[arg(long)]
+    pub strict: bool,
+    /// Include compiled bytecode disassembly in check output.
+    #[arg(long)]
+    pub dump_bytecode: bool,
 }
 #[derive(Args)]
-struct Run {
+pub struct Run {
     #[command(flatten)]
-    source: Source,
+    pub source: Source,
     #[arg(short, long)]
-    entry: Option<String>,
+    pub entry: Option<String>,
     /// Function arguments. JSON array by default, with lossless tagged values.
     #[arg(short, long, default_value = "[]")]
-    args: String,
+    pub args: String,
     #[arg(long, value_enum, default_value = "json")]
-    args_format: ArgsFormat,
+    pub args_format: ArgsFormat,
     #[arg(long, allow_hyphen_values = true)]
-    keys: Option<String>,
+    pub keys: Option<String>,
     #[arg(long)]
-    input: Vec<String>,
+    pub input: Vec<String>,
     #[arg(long)]
-    choose: Vec<usize>,
+    pub choose: Vec<usize>,
     #[arg(long, default_value_t = 0x5eed)]
-    seed: u64,
+    pub seed: u64,
     #[arg(long, value_enum, default_value = "rad")]
-    angle: Angle,
+    pub angle: Angle,
     /// Total deadline, including input waits. Headless run defaults to 30s; desktop/debug have none.
     #[arg(long, allow_hyphen_values = true)]
-    max_time: Option<f64>,
+    pub max_time: Option<f64>,
     #[arg(long, conflicts_with = "max_time")]
-    no_time_limit: bool,
+    pub no_time_limit: bool,
     /// Instruction budget (headless default: 5000000; desktop: unlimited).
     #[arg(long)]
-    max_steps: Option<u64>,
+    pub max_steps: Option<u64>,
     #[arg(long, default_value_t = 1000)]
-    max_depth: usize,
+    pub max_depth: usize,
     #[arg(long, default_value_t = 1_000_000)]
-    max_collection_len: usize,
+    pub max_collection_len: usize,
     #[arg(long, default_value_t = 16 * 1024 * 1024)]
-    max_string_bytes: usize,
+    pub max_string_bytes: usize,
     #[arg(long, default_value_t = 4 * 1024 * 1024)]
-    max_output_chars: usize,
+    pub max_output_chars: usize,
     /// Allow terminal prompts after scripted input is exhausted.
     #[arg(long)]
-    interactive: bool,
+    pub interactive: bool,
 }
 #[derive(Args)]
-struct DesktopRun {
+pub struct DesktopRun {
     #[command(flatten)]
-    run: Run,
+    pub run: Run,
     /// Deterministic scripted execution without opening a window.
     #[arg(long, conflicts_with = "gui")]
-    headless: bool,
+    pub headless: bool,
     /// Open a native window even with --json.
     #[arg(long, conflicts_with = "interactive")]
-    gui: bool,
+    pub gui: bool,
     /// Initial integer display scale.
     #[arg(long, default_value_t = 2, value_parser = clap::value_parser!(u32).range(1..=8))]
-    scale: u32,
+    pub scale: u32,
     /// Initially show the optional calculator keypad.
     #[arg(long)]
-    show_keys: bool,
+    pub show_keys: bool,
     /// Close the window as soon as execution completes.
     #[arg(long)]
-    exit_on_finish: bool,
+    pub exit_on_finish: bool,
+    /// Save final 320x240 display output as a PNG file.
+    #[arg(long)]
+    pub png: Option<PathBuf>,
 }
 #[derive(Args)]
-struct Debug {
+pub struct Debug {
     #[command(flatten)]
-    run: Run,
+    pub run: Run,
     #[arg(short = 'b', long = "break", value_parser = clap::value_parser!(usize))]
-    breakpoints: Vec<usize>,
+    pub breakpoints: Vec<usize>,
+    /// Conditional breakpoint formatted as LINE=EXPR (e.g. 5=X>3).
+    #[arg(long = "break-if", value_name = "LINE=EXPR")]
+    pub break_if: Vec<String>,
     /// Continue to the first breakpoint instead of stopping at the first statement.
     #[arg(long = "run")]
-    continue_to_break: bool,
+    pub continue_to_break: bool,
     #[arg(long, conflicts_with = "no_tui")]
-    tui: bool,
+    pub tui: bool,
     #[arg(long, conflicts_with = "tui")]
-    no_tui: bool,
+    pub no_tui: bool,
     #[arg(long)]
-    exit_on_finish: bool,
+    pub exit_on_finish: bool,
 }
 #[derive(Args)]
-struct Preview {
+pub struct Preview {
     #[command(flatten)]
     run: Run,
     #[arg(long, conflicts_with = "web")]
@@ -184,7 +242,7 @@ struct Preview {
     color: String,
 }
 #[derive(Args)]
-struct Watch {
+pub struct Watch {
     #[command(flatten)]
     run: Run,
     #[arg(long)]
@@ -199,7 +257,7 @@ struct Watch {
     port: u16,
 }
 #[derive(Args)]
-struct Test {
+pub struct Test {
     #[arg(default_value = "hpdev.toml")]
     manifest: PathBuf,
     #[arg(long, default_value = ".hpdev/test")]
@@ -208,13 +266,19 @@ struct Test {
     update_snapshots: bool,
 }
 #[derive(Args)]
-struct Trace {
+pub struct Trace {
     #[command(flatten)]
-    run: Run,
+    pub run: Run,
     #[arg(long)]
-    variables: bool,
+    pub variables: bool,
     #[arg(long, default_value_t = 10_000)]
-    max_trace_events: usize,
+    pub max_trace_events: usize,
+    /// Restrict statement trace events to the named function(s).
+    #[arg(long = "filter", value_name = "FUNC")]
+    pub filter: Vec<String>,
+    /// Include per-function statement execution counts in data.trace_summary.
+    #[arg(long)]
+    pub summary: bool,
 }
 
 impl Source {
@@ -242,7 +306,7 @@ impl Source {
     }
 }
 impl Run {
-    fn request(&self, operation: &str) -> Result<Request, Box<Report>> {
+    pub fn request(&self, operation: &str) -> Result<Request, Box<Report>> {
         let mut r = self.source.request(operation)?;
         r.entry = self.entry.clone();
         r.args = self.args.clone();
@@ -298,6 +362,8 @@ fn protected(command: &Command) -> Vec<PathBuf> {
         Command::Preview(o) => Some(&o.run.source),
         Command::Watch(o) => Some(&o.run.source),
         Command::Trace(o) => Some(&o.run.source),
+        Command::Bench(o) => Some(&o.run.source),
+        Command::Profile(o) => Some(&o.run.source),
         _ => None,
     };
     let mut paths = vec![];
@@ -310,24 +376,117 @@ fn protected(command: &Command) -> Vec<PathBuf> {
                 .filter_map(|s| s.split_once('=').map(|(_, p)| PathBuf::from(p))),
         );
     }
-    if let Command::Test(o) = command {
-        paths.push(o.manifest.clone());
-        if let Ok(text) = std::fs::read_to_string(&o.manifest)
-            && let Ok(m) = toml::from_str::<hpdev_core::testing::Manifest>(&text)
-        {
-            let root = o.manifest.parent().unwrap_or(Path::new("."));
-            for c in m.tests {
-                paths.push(root.join(c.file));
-                if let Some(p) = c.expect.png {
-                    paths.push(root.join(p));
+    match command {
+        Command::Test(o) => {
+            paths.push(o.manifest.clone());
+            if let Ok(text) = std::fs::read_to_string(&o.manifest)
+                && let Ok(m) = toml::from_str::<hpdev_core::testing::Manifest>(&text)
+            {
+                let root = o.manifest.parent().unwrap_or(Path::new("."));
+                for c in m.tests {
+                    paths.push(root.join(c.file));
+                    if let Some(p) = c.expect.png {
+                        paths.push(root.join(p));
+                    }
                 }
             }
         }
-    }
-    if let Command::Preview(o) = command
-        && let Some(p) = &o.png
-    {
-        paths.push(p.clone());
+        Command::Preview(o) => {
+            if let Some(p) = &o.png {
+                paths.push(p.clone());
+            }
+        }
+        Command::Run(o) => {
+            if let Some(p) = &o.png {
+                paths.push(p.clone());
+            }
+        }
+        Command::Eval(o) => {
+            if let Some(f) = &o.file {
+                paths.push(f.clone());
+            }
+        }
+        Command::Repl(o) => {
+            if let Some(f) = &o.load {
+                paths.push(f.clone());
+            }
+            if let Some(s) = &o.state {
+                paths.push(s.clone());
+            }
+            if let Some(s) = &o.save_state {
+                paths.push(s.clone());
+            }
+        }
+        Command::Compat(o) => {
+            if let Some(f) = &o.file {
+                paths.push(f.clone());
+            }
+        }
+        Command::Ast(o) => paths.push(o.file.clone()),
+        Command::Symbols(o) => paths.push(o.file.clone()),
+        Command::Disasm(o) => paths.push(o.file.clone()),
+        Command::Lint(o) => paths.push(o.file.clone()),
+        Command::Format(o) => {
+            paths.push(o.file.clone());
+            if let Some(out) = &o.output {
+                paths.push(out.clone());
+            }
+        }
+        Command::Inspect(o) => paths.push(o.file.clone()),
+        Command::Coverage(o) => {
+            if let Some(f) = &o.file {
+                paths.push(f.clone());
+            }
+            if let Some(m) = &o.manifest {
+                paths.push(m.clone());
+            }
+        }
+        Command::Plot(o) => {
+            if let Some(out) = &o.output {
+                paths.push(out.clone());
+            }
+        }
+        Command::Stats(o) => {
+            if let Some(csv) = &o.csv {
+                paths.push(csv.clone());
+            }
+        }
+        Command::Package(o) => {
+            paths.push(o.input.clone());
+            paths.push(o.output.clone());
+        }
+        Command::Docs(o) => {
+            if let Some(f) = &o.file {
+                paths.push(f.clone());
+            }
+            if let Some(out) = &o.output {
+                paths.push(out.clone());
+            }
+        }
+        Command::Snapshot(o) => match &o.action {
+            SnapshotAction::Capture { file, output, .. } => {
+                if let Some(f) = file {
+                    paths.push(f.clone());
+                }
+                paths.push(output.clone());
+            }
+            SnapshotAction::Inspect { state } => paths.push(state.clone()),
+            SnapshotAction::Run {
+                file,
+                state,
+                save_state,
+                ..
+            } => {
+                if let Some(f) = file {
+                    paths.push(f.clone());
+                }
+                paths.push(state.clone());
+                if let Some(s) = save_state {
+                    paths.push(s.clone());
+                }
+            }
+        },
+        _ => {}
     }
     paths
 }
@@ -374,6 +533,8 @@ pub fn main() -> u8 {
 fn dispatch(cli: &Cli, cancel: &Arc<AtomicBool>) -> Report {
     let (mut request, options) = match &cli.command {
         Command::Doctor => {
+            let (total, implemented, approximate, unsupported, catalog) =
+                hpdev_core::analysis::builtin_summary_counts();
             let mut r = Report::new("doctor", None);
             r.data = json!({
                 "platform": format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
@@ -390,9 +551,40 @@ fn dispatch(cli: &Cli, cancel: &Arc<AtomicBool>) -> Report {
                 "upstream_revision": hpdev_core::UPSTREAM_REVISION,
                 "firmware_required": false,
                 "calculator_required": false,
+                "builtins": {
+                    "total": total,
+                    "implemented": implemented,
+                    "approximate": approximate,
+                    "unsupported": unsupported,
+                },
+                "catalog_commands": catalog,
+                "commands": [
+                    "check", "run", "debug", "preview", "watch", "test", "trace", "doctor",
+                    "eval", "repl", "compat", "ast", "symbols", "disasm", "lint", "format",
+                    "inspect", "bench", "profile", "coverage", "plot", "stats", "init",
+                    "package", "docs", "snapshot"
+                ],
             });
             return r;
         }
+        Command::Eval(o) => return commands::run_eval(o, cli.json, cli.quiet),
+        Command::Repl(o) => return commands::run_repl(o, cli.json, cli.quiet, cancel),
+        Command::Compat(o) => return commands::run_compat(o, cli.json, cli.quiet),
+        Command::Ast(o) => return commands::run_ast(o, cli.json),
+        Command::Symbols(o) => return commands::run_symbols(o, cli.json, cli.quiet),
+        Command::Disasm(o) => return commands::run_disasm(o, cli.json),
+        Command::Lint(o) => return commands::run_lint(o, cli.json, cli.quiet),
+        Command::Format(o) => return commands::run_format(o, cli.json, cli.quiet),
+        Command::Inspect(o) => return commands::run_inspect(o, cli.json),
+        Command::Bench(o) => return commands::run_bench(o, cli.json),
+        Command::Profile(o) => return commands::run_profile(o, cli.json, cli.quiet, cancel),
+        Command::Coverage(o) => return commands::run_coverage(o, cli.json, cli.quiet, cancel),
+        Command::Plot(o) => return commands::run_plot(o, cli.json, cli.quiet),
+        Command::Stats(o) => return commands::run_stats(o, cli.json),
+        Command::Init(o) => return commands::run_init(o, cli.json),
+        Command::Package(o) => return commands::run_package(o, cli.json),
+        Command::Docs(o) => return commands::run_docs(o, cli.json),
+        Command::Snapshot(o) => return commands::run_snapshot(o, cli.json),
         Command::Test(o) => {
             return hpdev_core::testing::run_suite(
                 &o.manifest,
@@ -409,8 +601,9 @@ fn dispatch(cli: &Cli, cancel: &Arc<AtomicBool>) -> Report {
                 Ok(r) => r,
                 Err(e) => return *e,
             };
-            r.deny_warnings = o.deny_warnings;
-            r.deny_compatibility = o.deny_compatibility;
+            r.deny_warnings = o.deny_warnings || o.strict;
+            r.deny_compatibility = o.deny_compatibility || o.strict;
+            r.dump_bytecode = o.dump_bytecode;
             (r, ViewOptions::default())
         }
         Command::Run(o) => {
@@ -418,6 +611,7 @@ fn dispatch(cli: &Cli, cancel: &Arc<AtomicBool>) -> Report {
                 Ok(r) => r,
                 Err(e) => return *e,
             };
+            r.png = o.png.clone();
             let desktop = o.gui || !(o.headless || cli.json || o.run.interactive);
             if desktop {
                 r.interactive = true;
@@ -448,6 +642,8 @@ fn dispatch(cli: &Cli, cancel: &Arc<AtomicBool>) -> Report {
             r.trace = true;
             r.trace_variables = o.variables;
             r.max_trace_events = o.max_trace_events;
+            r.trace_filter = o.filter.clone();
+            r.trace_summary = o.summary;
             (r, ViewOptions::default())
         }
         Command::Debug(o) => {
@@ -461,6 +657,37 @@ fn dispatch(cli: &Cli, cancel: &Arc<AtomicBool>) -> Report {
                 let mut e = Report::new("debug", Some(r.file));
                 e.fail("invalid_request", 2, "breakpoint lines must be positive");
                 return e;
+            }
+            for spec in &o.break_if {
+                let Some((line_str, expr)) = spec.split_once('=') else {
+                    let mut e = Report::new("debug", Some(r.file));
+                    e.fail(
+                        "invalid_request",
+                        2,
+                        "conditional breakpoint must be LINE=EXPR",
+                    );
+                    return e;
+                };
+                let Ok(line) = line_str.trim().parse::<usize>() else {
+                    let mut e = Report::new("debug", Some(r.file));
+                    e.fail(
+                        "invalid_request",
+                        2,
+                        "breakpoint line must be a positive integer",
+                    );
+                    return e;
+                };
+                let cond = expr.trim();
+                if line == 0 || cond.is_empty() {
+                    let mut e = Report::new("debug", Some(r.file));
+                    e.fail(
+                        "invalid_request",
+                        2,
+                        "conditional breakpoint requires positive LINE and non-empty EXPR",
+                    );
+                    return e;
+                }
+                r.conditional_breakpoints.push((line, cond.to_owned()));
             }
             let tui = o.tui
                 || (!o.no_tui
@@ -585,7 +812,12 @@ fn finish(mut report: Report, cli: &Cli) -> u8 {
         println!("{}", serde_json::to_string(&report).expect("report JSON"));
     } else {
         if report.data["viewer"]["desktop"] != true {
-            print_diagnostics(&report);
+            print_diagnostics(&report, cli.verbose);
+        }
+        if report.operation == "check"
+            && let Some(disasm) = report.data["disassembly"].as_str()
+        {
+            print!("{disasm}");
         }
         if !cli.quiet {
             if report.operation == "test" {
@@ -616,7 +848,19 @@ fn finish(mut report: Report, cli: &Cli) -> u8 {
                     "{}",
                     serde_json::to_string_pretty(&report.data).expect("data JSON")
                 );
-            } else {
+            } else if matches!(
+                report.operation.as_str(),
+                "check" | "run" | "debug" | "preview" | "watch" | "trace"
+            ) {
+                if report.operation == "trace"
+                    && let Some(summary) = report.data["trace_summary"].as_object()
+                    && !summary.is_empty()
+                {
+                    eprintln!(
+                        "trace_summary: {}",
+                        serde_json::Value::Object(summary.clone())
+                    );
+                }
                 eprintln!(
                     "{}: {}{} ({:.1} ms, {} instructions, {} presentations)",
                     report.operation,
@@ -629,6 +873,14 @@ fn finish(mut report: Report, cli: &Cli) -> u8 {
                     report.duration_ms,
                     report.instructions,
                     report.frames_presented
+                );
+            }
+            if cli.verbose
+                && let Some(src) = &report.source
+            {
+                eprintln!(
+                    "source: {} ({}, sha256={})",
+                    src.display_name, src.representation, src.source_sha256
                 );
             }
             for path in &report.artifacts {
@@ -738,7 +990,7 @@ fn watch(cli: &Cli, mut request: Request, views: &mut Views, cancel: &Arc<Atomic
         });
         runs += 1;
         if !cli.json && !views.graphical() {
-            print_diagnostics(&outcome.report);
+            print_diagnostics(&outcome.report, cli.verbose);
         }
         if !cli.quiet {
             eprintln!("watch run {runs}: {}", outcome.report.status);
@@ -779,7 +1031,7 @@ fn watch(cli: &Cli, mut request: Request, views: &mut Views, cancel: &Arc<Atomic
     report
 }
 
-pub(crate) fn print_diagnostics(report: &Report) {
+pub(crate) fn print_diagnostics(report: &Report, verbose: bool) {
     for d in &report.diagnostics {
         let position = d
             .location
@@ -796,6 +1048,9 @@ pub(crate) fn print_diagnostics(report: &Report) {
             "{position} {}[{}] ({}): {}",
             d.severity, d.code, d.class, d.message
         );
+        if verbose && let Some(hint) = &d.hint {
+            eprintln!("  hint: {hint}");
+        }
     }
     if let Some(error) = &report.error {
         eprintln!("{}: {error}", report.status);
