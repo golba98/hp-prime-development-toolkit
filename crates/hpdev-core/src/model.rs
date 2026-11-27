@@ -37,6 +37,13 @@ pub struct Request {
     pub png: Option<PathBuf>,
     pub deny_warnings: bool,
     pub deny_compatibility: bool,
+    pub conditional_breakpoints: Vec<(usize, String)>,
+    pub file_breakpoints: Vec<(String, usize, Option<String>)>,
+    pub trace_filter: Vec<String>,
+    pub trace_summary: bool,
+    pub profile: bool,
+    pub coverage: bool,
+    pub dump_bytecode: bool,
 }
 
 impl Default for Request {
@@ -72,6 +79,13 @@ impl Default for Request {
             png: None,
             deny_warnings: false,
             deny_compatibility: false,
+            conditional_breakpoints: vec![],
+            file_breakpoints: vec![],
+            trace_filter: vec![],
+            trace_summary: false,
+            profile: false,
+            coverage: false,
+            dump_bytecode: false,
         }
     }
 }
@@ -174,6 +188,8 @@ pub struct DebugSnapshot {
     pub stack: Vec<Frame>,
     pub breakpoints: Vec<usize>,
     pub reason: String,
+    #[serde(default)]
+    pub watches: BTreeMap<String, Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -1,4 +1,5 @@
 mod cli;
+mod commands;
 #[cfg(feature = "desktop")]
 mod desktop;
 mod driver;
